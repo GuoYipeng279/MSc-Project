@@ -129,22 +129,18 @@ class Skeleton(Env):
         self.state = self.init_pose # initialize the agent state
         print('Visualizing INITIAL!')
         # print('66INIT',joints)
-        self.max_simu = 10
+        self.max_simu = 300
         self.walking_length = self.max_simu
         self.obstacles = obstacles # obstacles in the environment, in format of triangles; 3x3xn
-        self.fig, ax = plt.subplots()
-        self.sc = ax.scatter([], [])  # Empty scatter plot
         self.scatter_plots = []
+        self.epi = 0
         # print("INIT INI", self.init_pose)
-
-    def init(self):
-        self.sc.set_offsets([])  # Clear the scatter plot
-        return (self.sc,)
     
     def update(self, frame):
-        data = self.scatter_plots[frame]  # Get the data for the current frame
-        self.sc.set_offsets(data)  # Set the new data for the scatter plot
-        return (self.sc,)
+        plt.cla()  # Clear the previous plot
+        plt.scatter(self.scatter_plots[frame][:,0], self.scatter_plots[frame][:,2], c='b', marker='o')  # Create the scatter plot
+        plt.xlim(-2, 2)
+        plt.ylim(-1, 2)
 
     def physics_loss(self, past_coo, cur_coo):
         '''
@@ -203,12 +199,14 @@ class Skeleton(Env):
         self.walking_length -= 1
         tensor_state = tensor(self.state, device='cuda:0')
         prior, var1 = self.HuMoR.prior(tensor_state)
-        z = self.HuMoR.rsample(prior, var1)
+        # z = self.HuMoR.rsample(prior, var1)
+        z = prior
         decoded = self.HuMoR.decode(z, tensor_state)[:,:339]
         # print('DECODE',decoded)
         new_state = decoded.cpu().detach().numpy()# + action # add the action increment onto the default humor model
         tensor_new_state = tensor(new_state, device='cuda:0')
         # self.simple_vis(tensor_new_state, tensor_state)
+        self.vid_vis(tensor_state)
         reward = -self.HuMoR_loss(tensor_state, tensor_new_state)-self.physics_loss(tensor_state, tensor_new_state)
         # print('REWARD SHAPE', reward.shape)
         self.state = new_state
@@ -223,15 +221,20 @@ class Skeleton(Env):
     def render(self, mode='human'):
         # Your visualization code here
         # For example, create a scatter plot of the environment state
-        self.vid_vis(tensor(self.state))
+        pass
 
     def reset(self):
         # print('DO RESET')
         self.state = self.init_pose
         self.walking_length = self.max_simu
+        self.epi += 1
+        if self.scatter_plots:
+            fig, ax = plt.subplots()
+            ani = FuncAnimation(fig, self.update, frames=len(self.scatter_plots))
+            saving = 'animation{}.mp4'.format(self.epi)
+            ani.save(saving, writer='ffmpeg', fps=30)
+            print('SAVING', saving)
         self.scatter_plots = []
-        self.ani = FuncAnimation(self.fig, self.update, frames=len(self.scatter_plots), init_func=self.init, blit=True)
-        plt.show()
         # print('RESET OVER')
         return self.state
 
@@ -249,5 +252,5 @@ class Skeleton(Env):
 
     def vid_vis(self, pose):
         x_pred_dict = self.HuMoR.split_output(pose)
-        joints = x_pred_dict['joints'].reshape((22,3)).cpu().numpy().T
-        self.scatter_plots.append((joints[0], joints[2]))
+        joints = x_pred_dict['joints'].reshape((22,3)).cpu().numpy()
+        self.scatter_plots.append(joints)
