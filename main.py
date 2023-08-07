@@ -106,5 +106,6 @@ if __name__ == '__main__':
         # critic_model = Critic(339)
         # optimizer = optim.Adam(list(actor_model.parameters())+list(critic_model.parameters()), lr=0.001)
         env = Skeleton(args, config_file, init_pose, [])
-        model = A2C("MlpPolicy",env=env, verbose=1)
-        model.learn(5_000)
+        env.default_roll_out_split()
+        # model = A2C("MlpPolicy",env=env, verbose=1)
+        # model.learn(5_000)
