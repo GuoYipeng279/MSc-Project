@@ -14,6 +14,7 @@ from torch.distributions import Normal, kl_divergence
 from matplotlib import pyplot as plt
 from matplotlib.patches import Ellipse
 from matplotlib.animation import FuncAnimation
+from humor.train.train_state_prior import build_pytorch_gmm, load_gmm_results
 
 from humor.utils.transforms import compute_world2aligned_mat, rotation_matrix_to_angle_axis
 NUM_WORKERS = 0
@@ -34,7 +35,7 @@ class Skeleton(Env):
     deduct the physics loss of the generated state, these forms the critic part. 
     '''
 
-    def __init__(self, args_obj, config_file, init_pose, obstacles):
+    def __init__(self, args_obj, init_pose, obstacles):
 
         def test(args_obj) -> Tuple[HumorModel, DataLoader]:
 
@@ -126,7 +127,7 @@ class Skeleton(Env):
             return model, test_loader
 
         self.HuMoR, self.test_loader = test(args_obj)
-        self.action_space = Box(low=-np.ones(339),high=np.ones(339)) # the action, is a disturb of the humor z
+        self.action_space = Box(low=-np.ones(48),high=np.ones(48)) # the action, is a disturb of the humor z
         self.observation_space = Box(low=-10*np.ones(339),high=10*np.ones(339)) # agent move in latent space
         self.init_pose = init_pose # initial pose, in world coo
         self.state = self.init_pose # initialize the agent state
@@ -137,6 +138,8 @@ class Skeleton(Env):
         self.obstacles = obstacles # obstacles in the environment, in format of triangles; 3x3xn
         self.scatter_plots = []
         self.epi = 0
+        gmm_out_path = os.path.join('checkpoints/init_state_prior_gmm/prior_gmm.npz')
+        self.gmm(gmm_out_path)
 
 
         pose = tensor(self.init_pose, device='cuda:0').reshape(1,1,-1)
@@ -147,11 +150,13 @@ class Skeleton(Env):
     
     def update(self, frame):
         plt.cla()  # Clear the previous plot
+        plt.plot([-0.7, -0.7], [-1, 1], color='red', label='y=x line')
+        plt.plot([0.7, 0.7], [-1, 1], color='red', label='y=x line')
         plt.scatter(self.scatter_plots[frame][:,0], self.scatter_plots[frame][:,2], c='b', marker='o')  # Create the scatter plot
         plt.xlim(-2, 2)
         plt.ylim(-1, 2)
 
-    def physics_loss(self, past_coo, cur_coo):
+    def physics_loss(self):
         '''
         Compute the physics loss, for example penetration loss, joints beneath ground loss
         Also the reward when the agent get close to target
@@ -159,9 +164,11 @@ class Skeleton(Env):
         past_coo, current_coo need to extract from world coordinates, represent the joints positions
         '''
         # for penetration, see 322 rasterized line 151
-        # for each bone AB to CD, check AB, CD, AC, BD with all triangles
-        # old, new = self.HuMoR.split_output(past_coo)['joints'], self.HuMoR.split_output(cur_coo)['joints']
-        # old, new are 66D vectors, indicate the joint position. 
+        # return whether the current config is in restricted region
+        trans = self.x_pred_dict['trans']
+        # all_pos = joints+trans
+        if torch.max(torch.abs(trans[:,:,0])) > 0.7:
+            return 100
         return 0
     
     def HuMoR_loss(self, past_coo, cur_coo):
@@ -199,6 +206,30 @@ class Skeleton(Env):
         # normal = multivariate_normal(mean, var)
         # return normal.pdf(cur_sta.cpu().detach().numpy().squeeze()) # probability of getting to this position in latent space, according to humor
 
+    def GMM_reward(self, batch_in):
+        '''
+        This loss is trying to keep the transitioned state still on the feasible manifold.
+        '''
+        B = batch_in['joints'].size(0)
+        # print(batch_in['joints'].shape, batch_in['joints_vel'].shape, batch_in['trans_vel'].shape, batch_in['root_orient_vel'].shape)
+        joints = batch_in['joints'].reshape((1, -1))
+        joints_vel = batch_in['joints_vel'].reshape((1, -1))
+        trans_vel = batch_in['trans_vel'].reshape((1, -1))
+        root_orient_vel = batch_in['root_orient_vel'].reshape((1, -1))
+
+        # print(joints.shape, joints_vel.shape, trans_vel.shape, root_orient_vel.shape)
+
+        cur_state = torch.cat([joints, joints_vel, trans_vel, root_orient_vel], dim=-1)
+        # print(cur_state.device)
+
+        # eval likelihood
+        test_logprob = self.gmm_distrib.log_prob(cur_state.cpu())
+        mean_logprob = test_logprob.mean()
+
+        # print('Mean test logprob: %f' % (mean_logprob.item()))
+        # the more unlikely current state on the GMM model, the more penalty it suffers
+        return mean_logprob
+
     def step(self, action):
         '''
         A step in this environment: according to previous latent state, the humor model take its default action,
@@ -207,16 +238,18 @@ class Skeleton(Env):
         # print('DO STEP')
         self.walking_length -= 1
         tensor_state = tensor(self.state, device='cuda:0')
-        # prior, var1 = self.HuMoR.prior(tensor_state)
-        # z = self.HuMoR.rsample(prior, var1)
-        # decoded = self.HuMoR.decode(z, tensor_state)[:,:339]
-        decoded = self.roll_out_step()
+        action = tensor(action*1e-2, device='cuda:0')
+        decoded = self.roll_out_step(action=action)
         # print('DECODE',decoded)
-        new_state = decoded.cpu().detach().numpy()# + action # add the action increment onto the default humor model
+        new_state = decoded.cpu().detach().numpy()# + action*3e-3 # add the action increment onto the default humor model
         tensor_new_state = tensor(new_state, device='cuda:0')
         # self.simple_vis(tensor_new_state, tensor_state)
         self.vid_vis(tensor_state)
-        reward = -self.HuMoR_loss(tensor_state, tensor_new_state)-self.physics_loss(tensor_state, tensor_new_state)
+        gmm_reward = self.GMM_reward(self.x_pred_dict).item()*0
+        humor_loss = self.HuMoR_loss(tensor_state, tensor_new_state).item()
+        physics_loss = self.physics_loss()
+        print('GMM:', gmm_reward, 'humor:', humor_loss, 'phy:', physics_loss)
+        reward = gmm_reward-humor_loss-physics_loss
         # print('REWARD SHAPE', reward.shape)
         self.state = new_state
         done = self.walking_length <= 0
@@ -275,20 +308,23 @@ class Skeleton(Env):
         # for t in range(num_steps):
         #     pass
 
-    def roll_out_step(self):
+    def roll_out_step(self, use_mean=False, action=None):
         '''
         This is splited from the HuMoR model function roll_out, and transfered to the version to fit in the step function of RL framework. 
+        it can take in action that act as offset in latent space
         '''
         J = len(SMPL_JOINTS)
         B, S, D = self.x_past.size()
 
         x_pred_dict = None
-        # sample next step
-        sample_out = self.HuMoR.sample_step(self.past_in, use_mean=False, z=None, return_prior=False, return_z=False)
+        # print('self.x_past', self.x_past)
+        # sample next step, provide offset, from the action RL take
+        sample_out = self.HuMoR.sample_step(self.past_in, use_mean=use_mean, offset=action)
         decoder_out = sample_out['decoder_out']
 
         # split output predictions and transform out rotations to matrices
         x_pred_dict = self.HuMoR.split_output(decoder_out, convert_rots=True)
+        # print('sample_out', sample_out, self.x_pred_dict)
         if self.HuMoR.steps_out > 1:
             for k in x_pred_dict.keys():
                 # only want immediate next frame prediction
@@ -346,8 +382,8 @@ class Skeleton(Env):
         cur_world_dict = self.HuMoR.apply_world2local_trans(self.global_world2local_trans, self.global_world2local_rot, self.trans2joint, x_pred_dict, cur_world_dict, invert=True)
         #
         # update world2local transform
-        #
-        global_world2local_trans = torch.cat([-cur_world_dict['trans'][:,0:1,:2], torch.zeros((B, 1, 1)).to(self.x_past)], axis=2)
+        # Disable this can remain the agent in the center, but not recommanded
+        self.global_world2local_trans = torch.cat([-cur_world_dict['trans'][:,0:1,:2], torch.zeros((B, 1, 1)).to(self.x_past)], axis=2)
         # print(world2aligned_rot)
         self.global_world2local_rot = torch.matmul(self.global_world2local_rot, world2aligned_rot.reshape((B, 1, 3, 3)))
 
@@ -357,9 +393,13 @@ class Skeleton(Env):
         in_data_list = []
         for k in self.HuMoR.data_names:
             in_data_list.append(self.cur_input_dict[k])
+
+
+        # prepare for next frame
         self.past_in = torch.cat(in_data_list, axis=2)
         self.past_in = self.past_in.reshape((B, -1))
-        print('PAST_IN', self.past_in.shape)
+        self.x_pred_dict = x_pred_dict
+        # print('PAST_IN', self.past_in.shape)
         return self.past_in
 
     def roll_out_after(self):
@@ -377,7 +417,6 @@ class Skeleton(Env):
         pass
 
     def reset(self):
-        # print('DO RESET')
         self.state = self.init_pose
         self.walking_length = self.max_simu
         self.epi += 1
@@ -388,15 +427,23 @@ class Skeleton(Env):
             ani.save(saving, writer='ffmpeg', fps=30)
             print('SAVING', saving)
         self.scatter_plots = []
-        # print('RESET OVER')
+        # same as in __init__
+        pose = tensor(self.init_pose, device='cuda:0').reshape(1,1,-1)
+        init_dict = self.HuMoR.split_output(pose)
+        del init_dict['contacts']
+        self.roll_out_init(pose, init_dict)
         return self.state
 
-    def simple_vis(self, pose, old=None):
+    def to_plot_pose(self, pose):
         x_pred_dict = self.HuMoR.split_output(pose)
-        joints = x_pred_dict['joints'].reshape((22,3)).cpu().numpy().T
+        joints = x_pred_dict['joints'].reshape((22,3)).cpu().detach().numpy().T
+        return joints[0], joints[2]
+
+    def simple_vis(self, pose, old=None):
+        x, y = self.to_plot_pose(pose)
         # print('66INIT',joints)
         plt.axis('equal')
-        plt.scatter(joints[0], joints[2])
+        plt.scatter(x,y)
         if old is not None:
             x_old_dict = self.HuMoR.split_output(old)
             old_joints = x_old_dict['joints'].reshape((22,3)).cpu().numpy().T
@@ -420,7 +467,7 @@ class Skeleton(Env):
         saving = 'roll_out.mp4'
         ani.save(saving, writer='ffmpeg', fps=30)
         print('SAVING ROLL', saving)
-        
+
     def default_roll_out_split(self):
         pose = tensor(self.init_pose, device='cuda:0').reshape(1,1,-1)
         init_dict = self.HuMoR.split_output(pose)
@@ -437,3 +484,13 @@ class Skeleton(Env):
         ani.save(saving, writer='ffmpeg', fps=30)
         print('SAVING ROLL', saving)
 
+    def gmm(self, gmm_path):
+        #
+        # Evaluate likelihood of test data
+        #
+
+        # load in GMM result
+        gmm_weights, gmm_means, gmm_covs = load_gmm_results(gmm_path)
+
+        # build pytorch distrib
+        self.gmm_distrib = build_pytorch_gmm(gmm_weights, gmm_means, gmm_covs)

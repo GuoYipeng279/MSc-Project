@@ -7,14 +7,8 @@ from humor.test.test_humor import parse_args
 
 from torch import tensor
 from stable_baselines3 import A2C
-# from stable_baselines3.a2c import MlpPolicy
 from skeleton import Skeleton
-# from models import Actor, Critic
-
-if __name__ == '__main__':
-    args = parse_args(sys.argv[1:])
-    config_file = sys.argv[1:][0][1:]
-    init_pose = tensor([[ 0.0000e+00,  0.0000e+00,  8.0511e-01, -1.2322e-03, -7.0556e-01,
+init_pose = tensor([[ 0.0000e+00,  0.0000e+00,  8.0511e-01, -1.2322e-03, -7.0556e-01,
           8.5901e-02, -9.9506e-01, -9.9287e-02,  7.6269e-04, -3.7206e-04,
           1.1409e-02,  9.9993e-01, -9.9289e-02,  9.9499e-01, -1.1390e-02,
           2.9144e-01,  4.7586e-01, -5.8740e-01,  9.9901e-01, -3.8074e-02,
@@ -82,7 +76,12 @@ if __name__ == '__main__':
          -4.9302e-01,  1.4586e-01, -6.2222e-02, -6.4255e-01, -8.6503e-02,
          -1.8598e-02, -6.4377e-01,  1.6776e-01,  7.7387e-03, -5.7664e-01,
           1.2950e-02, -3.0246e-02, -7.0329e-01,  2.2927e-01]])
-    env = Skeleton(args, config_file, init_pose, [])
+
+
+if __name__ == '__main__':
+    print(sys.argv[1:])
+    args = parse_args(['@./configs/test_humor_sampling.cfg'])
+    env = Skeleton(args, init_pose, [])
     test = False
     if test:
         episodes = 10
@@ -96,16 +95,6 @@ if __name__ == '__main__':
                 score += reward
                 print('Episode{}: Score:{}'.format(episode, score))
     else:
-        # actor_model = Actor(339, 339)
-        # critic_model = Critic(339)
-        # optimizer = optim.Adam(list(actor_model.parameters())+list(critic_model.parameters()), lr=0.001)
-        # model = A2C(MlpPolicy(env.observation_space, env.action_space, 0.001),env=env)
-        # model.learn(25_000)
-        # env = make_vec_env("CartPole-v1", n_envs=4)
-        # actor_model = Actor(339, 339)
-        # critic_model = Critic(339)
-        # optimizer = optim.Adam(list(actor_model.parameters())+list(critic_model.parameters()), lr=0.001)
-        env = Skeleton(args, config_file, init_pose, [])
-        env.default_roll_out_split()
-        # model = A2C("MlpPolicy",env=env, verbose=1)
-        # model.learn(5_000)
+        model = A2C("MlpPolicy",env=env, verbose=1)
+        # env.default_roll_out_split()
+        model.learn(25_000)
