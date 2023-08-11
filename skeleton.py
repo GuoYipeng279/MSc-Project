@@ -128,33 +128,43 @@ class Skeleton(Env):
 
         self.HuMoR, self.test_loader = test(args_obj)
         self.action_space = Box(low=-np.ones(48),high=np.ones(48)) # the action, is a disturb of the humor z
-        self.observation_space = Box(low=-10*np.ones(339),high=10*np.ones(339)) # agent move in latent space
+        self.observation_space = Box(low=-10*np.ones(141),high=10*np.ones(141)) # agent move in real world space
         self.init_pose = init_pose # initial pose, in world coo
-        self.state = self.init_pose # initialize the agent state
+        self.observation = self.init_pose # initialize the agent state
         print('Visualizing INITIAL!')
         # print('66INIT',joints)
         self.max_simu = 300
         self.walking_length = self.max_simu
         self.obstacles = obstacles # obstacles in the environment, in format of triangles; 3x3xn
         self.scatter_plots = []
+        self.loss = []
         self.epi = 0
         gmm_out_path = os.path.join('checkpoints/init_state_prior_gmm/prior_gmm.npz')
         self.gmm(gmm_out_path)
+        self.fig, (self.ax1, self.ax2) = plt.subplots(1, 2)
+        self.fig.suptitle('Learning supervisor')
 
 
         pose = tensor(self.init_pose, device='cuda:0').reshape(1,1,-1)
         init_dict = self.HuMoR.split_output(pose)
         del init_dict['contacts']
+        self.state = self.VAE339toGMM138(init_dict) # initialize the agent state
         self.roll_out_init(pose, init_dict)
         # print("INIT INI", self.init_pose)
     
     def update(self, frame):
-        plt.cla()  # Clear the previous plot
-        plt.plot([-0.7, -0.7], [-1, 1], color='red', label='y=x line')
-        plt.plot([0.7, 0.7], [-1, 1], color='red', label='y=x line')
-        plt.scatter(self.scatter_plots[frame][:,0], self.scatter_plots[frame][:,2], c='b', marker='o')  # Create the scatter plot
-        plt.xlim(-2, 2)
-        plt.ylim(-1, 2)
+        # plt.cla()  # Clear the previous plot
+        self.ax1.cla()
+        self.ax2.cla()
+        self.ax1.plot([-0.7, -0.7], [-1, 2], color='red', label='y=x line')
+        self.ax1.plot([0.7, 0.7], [-1, 2], color='red', label='y=x line')
+        self.ax1.scatter(self.scatter_plots[frame][:,0], self.scatter_plots[frame][:,2], c='b', marker='o')  # Create the scatter plot
+        if self.loss: self.ax1.text(0.1,0.1,'phy:'+str(self.loss[frame][2]))
+        self.ax1.set_xlim([-1, 1])
+        self.ax1.set_ylim([-1, 2])
+        self.ax2.scatter(self.scatter_plots[frame][:,1], self.scatter_plots[frame][:,2], c='b', marker='o')  # Create the scatter plot
+        self.ax2.set_xlim([-1, 1])
+        self.ax2.set_ylim([-1, 2])
 
     def physics_loss(self):
         '''
@@ -167,9 +177,9 @@ class Skeleton(Env):
         # return whether the current config is in restricted region
         trans = self.x_pred_dict['trans']
         # all_pos = joints+trans
-        if torch.max(torch.abs(trans[:,:,0])) > 0.7:
-            return 100
-        return 0
+        # if torch.max(torch.abs(trans[:,:,0])) > 0.7:
+        #     return 100
+        return torch.max(torch.abs(trans[:,:,0]))
     
     def HuMoR_loss(self, past_coo, cur_coo):
         '''
@@ -206,24 +216,31 @@ class Skeleton(Env):
         # normal = multivariate_normal(mean, var)
         # return normal.pdf(cur_sta.cpu().detach().numpy().squeeze()) # probability of getting to this position in latent space, according to humor
 
+    def VAE339toGMM138(self, state, trans=True):
+        '''
+        transform the VAE 339D state, to GMM 138D data.
+        '''
+        B = state['joints'].size(0)
+        # print(batch_in['joints'].shape, batch_in['joints_vel'].shape, batch_in['trans_vel'].shape, batch_in['root_orient_vel'].shape)
+        _trans = state['trans'].reshape((1, -1))
+        joints = state['joints'].reshape((1, -1))
+        joints_vel = state['joints_vel'].reshape((1, -1))
+        trans_vel = state['trans_vel'].reshape((1, -1))
+        root_orient_vel = state['root_orient_vel'].reshape((1, -1))
+        data = [joints, joints_vel, trans_vel, root_orient_vel]
+        if trans: data.append(_trans)
+        cur_state = torch.cat(data, dim=-1)
+        return cur_state.cpu().detach()
+
     def GMM_reward(self, batch_in):
         '''
         This loss is trying to keep the transitioned state still on the feasible manifold.
         '''
-        B = batch_in['joints'].size(0)
-        # print(batch_in['joints'].shape, batch_in['joints_vel'].shape, batch_in['trans_vel'].shape, batch_in['root_orient_vel'].shape)
-        joints = batch_in['joints'].reshape((1, -1))
-        joints_vel = batch_in['joints_vel'].reshape((1, -1))
-        trans_vel = batch_in['trans_vel'].reshape((1, -1))
-        root_orient_vel = batch_in['root_orient_vel'].reshape((1, -1))
-
-        # print(joints.shape, joints_vel.shape, trans_vel.shape, root_orient_vel.shape)
-
-        cur_state = torch.cat([joints, joints_vel, trans_vel, root_orient_vel], dim=-1)
+        cur_state = self.VAE339toGMM138(batch_in, False)
         # print(cur_state.device)
 
         # eval likelihood
-        test_logprob = self.gmm_distrib.log_prob(cur_state.cpu())
+        test_logprob = self.gmm_distrib.log_prob(cur_state)
         mean_logprob = test_logprob.mean()
 
         # print('Mean test logprob: %f' % (mean_logprob.item()))
@@ -237,21 +254,23 @@ class Skeleton(Env):
         '''
         # print('DO STEP')
         self.walking_length -= 1
-        tensor_state = tensor(self.state, device='cuda:0')
+        tensor_state = tensor(self.observation, device='cuda:0')
         action = tensor(action*1e-2, device='cuda:0')
         decoded = self.roll_out_step(action=action)
         # print('DECODE',decoded)
         new_state = decoded.cpu().detach().numpy()# + action*3e-3 # add the action increment onto the default humor model
         tensor_new_state = tensor(new_state, device='cuda:0')
         # self.simple_vis(tensor_new_state, tensor_state)
-        self.vid_vis(tensor_state)
+        self.vid_vis(tensor_state) # CAUTION: this will not show global position
         gmm_reward = self.GMM_reward(self.x_pred_dict).item()*0
         humor_loss = self.HuMoR_loss(tensor_state, tensor_new_state).item()
-        physics_loss = self.physics_loss()
+        physics_loss = self.physics_loss().item()
+        self.loss.append((gmm_reward,humor_loss,physics_loss))
         print('GMM:', gmm_reward, 'humor:', humor_loss, 'phy:', physics_loss)
         reward = gmm_reward-humor_loss-physics_loss
         # print('REWARD SHAPE', reward.shape)
-        self.state = new_state
+        self.observation = new_state
+        self.state = self.VAE339toGMM138(self.x_pred_dict)
         done = self.walking_length <= 0
         # reward = 0
         info = {'world':0}
@@ -417,20 +436,24 @@ class Skeleton(Env):
         pass
 
     def reset(self):
-        self.state = self.init_pose
+        self.observation = self.init_pose
         self.walking_length = self.max_simu
         self.epi += 1
         if self.scatter_plots:
-            fig, ax = plt.subplots()
-            ani = FuncAnimation(fig, self.update, frames=len(self.scatter_plots))
+            # fig, ax = plt.subplots()
+            ans = self.roll_out_after() # this zanshi over write the vid_vis in step function
+            self.scatter_plots = ans['joints'].reshape((300,22,3)).cpu().detach().numpy()
+            ani = FuncAnimation(self.fig, self.update, frames=len(self.scatter_plots))
             saving = 'animation{}.mp4'.format(self.epi)
             ani.save(saving, writer='ffmpeg', fps=30)
             print('SAVING', saving)
         self.scatter_plots = []
+        self.loss = []
         # same as in __init__
         pose = tensor(self.init_pose, device='cuda:0').reshape(1,1,-1)
         init_dict = self.HuMoR.split_output(pose)
         del init_dict['contacts']
+        self.state = self.VAE339toGMM138(init_dict) # initialize the agent state
         self.roll_out_init(pose, init_dict)
         return self.state
 
@@ -463,7 +486,7 @@ class Skeleton(Env):
         print('ROLLING', {k:ans[k].shape if type(ans[k])== Tensor else ans for k in ans})
         self.scatter_plots = ans['joints'].reshape((300,22,3)).cpu().detach().numpy()
         fig, ax = plt.subplots()
-        ani = FuncAnimation(fig, self.update, frames=self.scatter_plots.shape[0])
+        ani = FuncAnimation(self.fig, self.update, frames=self.scatter_plots.shape[0])
         saving = 'roll_out.mp4'
         ani.save(saving, writer='ffmpeg', fps=30)
         print('SAVING ROLL', saving)
@@ -478,8 +501,8 @@ class Skeleton(Env):
         # ans = self.HuMoR.roll_out(pose, init_dict, 300)
         print('ROLLING', {k:ans[k].shape if type(ans[k])== Tensor else ans for k in ans})
         self.scatter_plots = ans['joints'].reshape((300,22,3)).cpu().detach().numpy()
-        fig, ax = plt.subplots()
-        ani = FuncAnimation(fig, self.update, frames=self.scatter_plots.shape[0])
+        # fig, ax = plt.subplots()
+        ani = FuncAnimation(self.fig, self.update, frames=self.scatter_plots.shape[0])
         saving = 'roll_out.mp4'
         ani.save(saving, writer='ffmpeg', fps=30)
         print('SAVING ROLL', saving)
