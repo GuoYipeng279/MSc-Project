@@ -138,12 +138,13 @@ class Skeleton(Env):
         self.obstacles = obstacles # obstacles in the environment, in format of triangles; 3x3xn
         self.scatter_plots = []
         self.loss = []
+        self.eva = []
         self.epi = 0
         gmm_out_path = os.path.join('checkpoints/init_state_prior_gmm/prior_gmm.npz')
         self.gmm(gmm_out_path)
-        self.fig, (self.ax1, self.ax2) = plt.subplots(1, 2)
+        self.fig, (self.ax1, self.ax2) = plt.subplots(1, 2, gridspec_kw={'width_ratios': [1, 3]}, figsize=(20,10))
         self.fig.suptitle('Learning supervisor')
-
+        self.forward = None # the evaluation function, to be setup when A2C model initialized
 
         pose = tensor(self.init_pose, device='cuda:0').reshape(1,1,-1)
         init_dict = self.HuMoR.split_output(pose)
@@ -151,6 +152,9 @@ class Skeleton(Env):
         self.state = self.VAE339toGMM138(init_dict) # initialize the agent state
         self.roll_out_init(pose, init_dict)
         # print("INIT INI", self.init_pose)
+
+        # INFO_STORAGE_FOR_TRAINING_STATISTICS
+        self.rew_critic_pair = []
     
     def update(self, frame):
         # plt.cla()  # Clear the previous plot
@@ -159,14 +163,15 @@ class Skeleton(Env):
         self.ax1.plot([-0.7, -0.7], [-1, 2], color='red', label='y=x line')
         self.ax1.plot([0.7, 0.7], [-1, 2], color='red', label='y=x line')
         self.ax1.scatter(self.scatter_plots[frame][:,0], self.scatter_plots[frame][:,2], c='b', marker='o')  # Create the scatter plot
-        if self.loss: self.ax1.text(0.1,0.1,'phy:'+str(self.loss[frame][2]))
+        if self.eva: self.ax1.text(0,-0.5,'eva:'+str(self.eva[frame]))
+        if self.loss: self.ax2.text(0,-0.5,'phy:'+str(self.loss[frame][2]))
         self.ax1.set_xlim([-1, 1])
         self.ax1.set_ylim([-1, 2])
         self.ax2.scatter(self.scatter_plots[frame][:,1], self.scatter_plots[frame][:,2], c='b', marker='o')  # Create the scatter plot
-        self.ax2.set_xlim([-1, 1])
+        self.ax2.set_xlim([-1, 5])
         self.ax2.set_ylim([-1, 2])
 
-    def physics_loss(self):
+    def physical_reward(self):
         '''
         Compute the physics loss, for example penetration loss, joints beneath ground loss
         Also the reward when the agent get close to target
@@ -175,11 +180,11 @@ class Skeleton(Env):
         '''
         # for penetration, see 322 rasterized line 151
         # return whether the current config is in restricted region
-        trans = self.x_pred_dict['trans']
+        trans = self.cur_world_dict['joints']
         # all_pos = joints+trans
         # if torch.max(torch.abs(trans[:,:,0])) > 0.7:
         #     return 100
-        return torch.max(torch.abs(trans[:,:,0]))
+        return torch.mean(trans[:,:,1]) - torch.mean(torch.abs(trans[:,:,0]))
     
     def HuMoR_loss(self, past_coo, cur_coo):
         '''
@@ -256,7 +261,7 @@ class Skeleton(Env):
         self.walking_length -= 1
         tensor_state = tensor(self.observation, device='cuda:0')
         action = tensor(action*1e-2, device='cuda:0')
-        decoded = self.roll_out_step(action=action)
+        decoded = self.roll_out_step(use_mean=False, action=action)
         # print('DECODE',decoded)
         new_state = decoded.cpu().detach().numpy()# + action*3e-3 # add the action increment onto the default humor model
         tensor_new_state = tensor(new_state, device='cuda:0')
@@ -264,15 +269,21 @@ class Skeleton(Env):
         self.vid_vis(tensor_state) # CAUTION: this will not show global position
         gmm_reward = self.GMM_reward(self.x_pred_dict).item()*0
         humor_loss = self.HuMoR_loss(tensor_state, tensor_new_state).item()
-        physics_loss = self.physics_loss().item()
-        self.loss.append((gmm_reward,humor_loss,physics_loss))
-        print('GMM:', gmm_reward, 'humor:', humor_loss, 'phy:', physics_loss)
-        reward = gmm_reward-humor_loss-physics_loss
+        physical_reward = self.physical_reward().item()*10
+        if self.walking_length % 30 == 0: print('GMM:', gmm_reward, 'humor:', humor_loss, 'phy:', physical_reward)
+        reward = gmm_reward-humor_loss+physical_reward
+        self.loss.append((gmm_reward,humor_loss,physical_reward,reward))
         # print('REWARD SHAPE', reward.shape)
         self.observation = new_state
-        self.state = self.VAE339toGMM138(self.x_pred_dict)
+        self.state = self.VAE339toGMM138(self.cur_world_dict)
+        # if self.walking_length % 100 == 0: print(self.state)
         done = self.walking_length <= 0
+        actions, values, log_prob = self.forward(tensor(self.state, device='cuda:0'))
+        self.eva.append(values.item())
+        if self.forward and self.walking_length % 30 == 0:
+            print('actions:', actions.shape, 'values:', values.item())
         # reward = 0
+        self.rew_critic_pair.append((reward, values.item()))
         info = {'world':0}
         self.render()
 
@@ -413,6 +424,8 @@ class Skeleton(Env):
         for k in self.HuMoR.data_names:
             in_data_list.append(self.cur_input_dict[k])
 
+        # prepare the state space
+        self.cur_world_dict = cur_world_dict
 
         # prepare for next frame
         self.past_in = torch.cat(in_data_list, axis=2)
@@ -449,6 +462,7 @@ class Skeleton(Env):
             print('SAVING', saving)
         self.scatter_plots = []
         self.loss = []
+        self.eva = []
         # same as in __init__
         pose = tensor(self.init_pose, device='cuda:0').reshape(1,1,-1)
         init_dict = self.HuMoR.split_output(pose)

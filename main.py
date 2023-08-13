@@ -3,8 +3,10 @@ import sys, os
 cur_file_path = os.path.dirname(os.path.realpath(__file__))
 sys.path.append(os.path.join(cur_file_path, '..'))
 
+import json
 from humor.test.test_humor import parse_args
-
+import numpy as np
+from matplotlib import pyplot as plt
 from torch import tensor
 from stable_baselines3 import A2C
 from skeleton import Skeleton
@@ -95,6 +97,21 @@ if __name__ == '__main__':
                 score += reward
                 print('Episode{}: Score:{}'.format(episode, score))
     else:
-        model = A2C("MlpPolicy",env=env, verbose=1)
+        model = A2C("MlpPolicy",env=env, verbose=1, learning_rate=0.01)
+        env.forward = model.policy.forward
         # env.default_roll_out_split()
-        model.learn(25_000)
+        try:
+            model = A2C.load('agent', env=env)
+            env.forward = model.policy.forward
+            print('Agent Loaded')
+        except:
+            pass
+        model.learn(3_000)
+        model.save('agent1')
+        value_pair = np.array(env.rew_critic_pair)
+        plt.cla()
+        plt.scatter(value_pair[:,0], value_pair[:,1], alpha=np.array(range(len(value_pair)))/len(value_pair))
+        with open('rew_critic_pair4.json', 'w') as f:
+            json.dump(env.rew_critic_pair, f)
+        plt.show()
+        
