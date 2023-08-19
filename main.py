@@ -8,8 +8,9 @@ from humor.test.test_humor import parse_args
 import numpy as np
 from matplotlib import pyplot as plt
 from torch import tensor
+import torch
 from stable_baselines3 import A2C
-from skeleton import Skeleton
+from skeleton import Skeleton, moving_forward_controller, left_turn_controller, right_turn_controller
 init_pose = tensor([[ 0.0000e+00,  0.0000e+00,  8.0511e-01, -1.2322e-03, -7.0556e-01,
           8.5901e-02, -9.9506e-01, -9.9287e-02,  7.6269e-04, -3.7206e-04,
           1.1409e-02,  9.9993e-01, -9.9289e-02,  9.9499e-01, -1.1390e-02,
@@ -83,35 +84,62 @@ init_pose = tensor([[ 0.0000e+00,  0.0000e+00,  8.0511e-01, -1.2322e-03, -7.0556
 if __name__ == '__main__':
     print(sys.argv[1:])
     args = parse_args(['@./configs/test_humor_sampling.cfg'])
-    env = Skeleton(args, init_pose, [])
-    test = False
-    if test:
-        episodes = 10
-        for episode in range(1, episodes+1):
-            state = env.reset()
-            done = False
-            score = 0
-            while not done:
-                action = env.action_space.sample()
-                n_state, reward, done, info = env.step(action)
-                score += reward
-                print('Episode{}: Score:{}'.format(episode, score))
-    else:
-        model = A2C("MlpPolicy",env=env, verbose=1, learning_rate=0.01)
-        env.forward = model.policy.forward
-        # env.default_roll_out_split()
-        try:
-            model = A2C.load('agent', env=env)
-            env.forward = model.policy.forward
-            print('Agent Loaded')
-        except:
-            pass
-        model.learn(3_000)
-        model.save('agent1')
-        value_pair = np.array(env.rew_critic_pair)
-        plt.cla()
-        plt.scatter(value_pair[:,0], value_pair[:,1], alpha=np.array(range(len(value_pair)))/len(value_pair))
-        with open('rew_critic_pair4.json', 'w') as f:
+    env = Skeleton(args, init_pose, moving_forward_controller, "GLOBAL3")
+    test = 0
+    if test == 1:
+        print("TEST MODE")
+        for i in range(48*9):
+            print("ENGINEERING:"+str(i))
+            arr = np.zeros(48)
+            # arr[7] = -1.
+            posneg = (i%9)/2. - 2.
+            arr[i//9] = posneg
+            offset = tensor(arr, device='cuda:0')
+            env.default_roll_out_split(True, offset, "fea"+str(i//9)+"_"+str(i%9))
+        with open('features.json', 'w') as f:
             json.dump(env.rew_critic_pair, f)
-        plt.show()
+        print("FEATURE ENGINEERING FINISHED!")
+    elif test == 2:
+        # Visualize the critic network, for 5D simple data
+        model = A2C("MlpPolicy",env=env, verbose=1) #, learning_rate=0.01)
+        env.forward = model.policy.forward
+        useSaved = True
+        # env.default_roll_out_split()
+        if useSaved:
+            try:
+                model = A2C.load('agentWS', env=env)
+                env.forward = model.policy.forward
+                print('Agent Loaded')
+            except:
+                pass
+        inpu = torch.cat([tensor([[0,y,0,0,x]], device='cuda:0') for x in np.arange(-0.4,0.4,0.01) for y in np.arange(-1,10,0.1)])
+        print(inpu.shape)
+        actions, value, _ = env.forward(inpu)
+        print(value.shape)
+        value = value.reshape((80,-1)).cpu().detach()
+        plt.contour(value.T)
+        plt.savefig("SHOWME.png")
+        # plt.show()
+    else:
+        model = A2C("MlpPolicy",env=env, verbose=1) #, learning_rate=0.01)
+        env.forward = model.policy.forward
+        useSaved = False
+        # env.default_roll_out_split()
+        if useSaved:
+            try:
+                model = A2C.load('agentWS', env=env)
+                env.forward = model.policy.forward
+                print('Agent Loaded')
+            except:
+                pass
+        print('START LEARNING')
+        total_step = 100000
+        model.learn(total_step)
+        model.save('agent48WS'+str(total_step))
+        value_pair = np.array(env.rew_critic_pair)
+        # plt.cla()
+        # plt.scatter(value_pair[:,0], value_pair[:,1], alpha=np.array(range(len(value_pair)))/len(value_pair))
+        # plt.show()
+        with open('zrew_critic_pair5.json', 'w') as f:
+            json.dump(env.rew_critic_pair, f)
         

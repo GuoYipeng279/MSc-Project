@@ -8,12 +8,12 @@ cur_file_path = os.path.dirname(os.path.realpath(__file__))
 sys.path.append(os.path.join(cur_file_path, '..'))
 
 from humor.test.test_humor import parse_args
-from skeleton import Skeleton
+from skeleton import Skeleton, ploting
 from main import init_pose
 from torch import tensor
 
 args = parse_args(['@./configs/test_humor_sampling.cfg'])
-env = Skeleton(args, init_pose, [])
+env = Skeleton(args, init_pose)
 user_data = [0.]*48
 
 def update_plot(_=None):  # Accept a parameter (ignored)
@@ -24,18 +24,12 @@ def update_plot(_=None):  # Accept a parameter (ignored)
     step = step_input.get()
     if step == '': step = 1
     else: step = int(step)
+    user_data = [0.]*48 # can only test dimensions independently
     user_data[amplitude] = sample_slider.get()
     latent_data = tensor(user_data, device='cuda:0')
-    ax.cla()
     env.reset()
-    x,y = env.to_plot_pose(env.init_pose)
-    ax.scatter(x,y,s=0.1) # plot the initial state
-    for _ in range(step):
-        next_pose = env.roll_out_step(True, latent_data) # do a single rollout step
-        x,y = env.to_plot_pose(next_pose)
-        ax.scatter(x,y,c='red',s=0.1) # plot the state after initial state
-    x,y = env.to_plot_pose(next_pose)
-    ax.scatter(x,y,c='red',s=0.1) # plot the state after initial state
+    ans = env.default_roll_out_split(True, latent_data, simu=step)['joints'].reshape((-1,22,3)).cpu().detach().numpy()
+    ploting(ans, ax1,ax2)
     canvas.draw()
 
 # Create the main window
@@ -49,20 +43,17 @@ dimension_input = ttk.Entry(input_frame)
 dimension_input.grid(row=0, column=1)
 step_input = ttk.Entry(input_frame)
 step_input.grid(row=1, column=1)
-sample_slider = ttk.Scale(root, from_=-1, to=1, orient="horizontal", command=update_plot)
+sample_slider = ttk.Scale(root, from_=-2, to=2, orient="horizontal")#, command=update_plot)
 sample_slider.pack()
+generate_button = ttk.Button(root, text='Generate', command=update_plot)
+generate_button.pack()
 
 # Create matplotlib figure and plot
-fig, ax = plt.subplots()
+fig, (ax1,ax2) = plt.subplots(1,2, gridspec_kw={'width_ratios': [1, 3]}, figsize=(20,10))
 # x = np.linspace(0, 2 * np.pi, 100)s
 # line, = ax.plot(x, np.sin(x))
-ax.axis('equal')
-ax.set_xlim(-1.5,1.5)
-ax.set_ylim(-1,2)
-scatter = ax.scatter(np.array([0,1]),np.array([0,1]))
-ax.set_xlabel("X")
-ax.set_ylabel("Y")
-ax.set_title("Real-Time Plot")
+# ax1.axis('equal')
+# scatter = ax1.scatter(np.array([0,1]),np.array([0,1]))
 canvas = FigureCanvasTkAgg(fig, master=root)
 canvas.get_tk_widget().pack()
 
