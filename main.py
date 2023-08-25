@@ -11,7 +11,75 @@ from torch import tensor
 import torch
 from stable_baselines3 import A2C
 from skeleton import Skeleton, moving_forward_controller, left_turn_controller, right_turn_controller
-init_pose = tensor([[ 0.0000e+00,  0.0000e+00,  8.0511e-01, -1.2322e-03, -7.0556e-01,
+init_pose = tensor([[ 0.0000e+00,  0.0000e+00,  9.4889e-01, -7.1368e-03,  1.5177e-02, # sta
+          3.4314e-03, -9.9999e-01, -3.4565e-03, -2.2632e-04,  5.9605e-08,
+         -6.5348e-02,  9.9786e-01, -3.4639e-03,  9.9786e-01,  6.5348e-02,
+          7.1859e-02,  3.9588e-02, -7.0745e-03,  9.9737e-01, -5.5047e-02,
+          4.7153e-02,  6.2416e-02,  9.8301e-01, -1.7263e-01, -3.6849e-02,
+          1.7512e-01,  9.8386e-01,  9.9933e-01,  3.5936e-02, -6.6485e-03,
+         -3.6530e-02,  9.8764e-01, -1.5245e-01,  1.0879e-03,  1.5259e-01,
+          9.8829e-01,  9.9967e-01,  2.4189e-02,  8.5032e-03, -2.3731e-02,
+          9.9845e-01, -5.0415e-02, -9.7095e-03,  5.0197e-02,  9.9869e-01,
+          9.9747e-01,  6.4913e-02, -2.9150e-02, -6.2258e-02,  9.9450e-01,
+          8.4241e-02,  3.4458e-02, -8.2213e-02,  9.9602e-01,  9.9729e-01,
+         -6.7212e-02,  3.0009e-02,  6.4800e-02,  9.9506e-01,  7.5173e-02,
+         -3.4913e-02, -7.3024e-02,  9.9672e-01,  9.9854e-01, -2.5540e-02,
+         -4.7608e-02,  2.1353e-02,  9.9603e-01, -8.6456e-02,  4.9627e-02,
+          8.5313e-02,  9.9512e-01,  9.8149e-01, -9.4049e-02,  1.6682e-01,
+          7.0583e-02,  9.8743e-01,  1.4141e-01, -1.7802e-01, -1.2702e-01,
+          9.7579e-01,  9.9285e-01, -1.0768e-01, -5.1514e-02,  1.0991e-01,
+          9.9303e-01,  4.2621e-02,  4.6565e-02, -4.7978e-02,  9.9776e-01,
+          9.9966e-01, -2.4926e-02, -7.9026e-03,  2.4795e-02,  9.9956e-01,
+         -1.6243e-02,  8.3040e-03,  1.6041e-02,  9.9984e-01,  1.0000e+00,
+          0.0000e+00,  0.0000e+00,  0.0000e+00,  1.0000e+00,  0.0000e+00,
+          0.0000e+00,  0.0000e+00,  1.0000e+00,  1.0000e+00,  0.0000e+00,
+          0.0000e+00,  0.0000e+00,  1.0000e+00,  0.0000e+00,  0.0000e+00,
+          0.0000e+00,  1.0000e+00,  9.9760e-01,  4.4789e-02,  5.2714e-02,
+         -4.1330e-02,  9.9703e-01, -6.4972e-02, -5.5468e-02,  6.2637e-02,
+          9.9649e-01,  9.1169e-01,  4.1084e-01,  5.4550e-03, -4.0843e-01,
+          9.0763e-01, -9.6885e-02, -4.4755e-02,  8.6101e-02,  9.9528e-01,
+          9.1036e-01, -4.0341e-01,  9.2180e-02,  4.0891e-01,  9.1116e-01,
+         -5.0842e-02, -6.3480e-02,  8.3978e-02,  9.9444e-01,  9.9963e-01,
+         -2.6861e-02, -4.3516e-03,  2.7036e-02,  9.9853e-01,  4.7077e-02,
+          3.0807e-03, -4.7177e-02,  9.9888e-01,  4.6379e-01,  8.6277e-01,
+         -2.0130e-01, -8.7908e-01,  4.7639e-01,  1.6425e-02,  1.1007e-01,
+          1.6934e-01,  9.7939e-01,  4.7531e-01, -8.5143e-01,  2.2169e-01,
+          8.7302e-01,  4.8769e-01,  1.2800e-03, -1.0920e-01,  1.9293e-01,
+          9.7512e-01,  9.1373e-01, -2.1195e-01, -3.4666e-01,  1.6180e-01,
+          9.7241e-01, -1.6807e-01,  3.7272e-01,  9.7477e-02,  9.2281e-01,
+          9.3634e-01,  1.7886e-01,  3.0212e-01, -2.0098e-01,  9.7863e-01,
+          4.3514e-02, -2.8788e-01, -1.0147e-01,  9.5227e-01,  9.4842e-01,
+          1.7123e-01, -2.6680e-01, -1.4982e-01,  9.8377e-01,  9.8773e-02,
+          2.7938e-01, -5.3706e-02,  9.5868e-01,  9.7790e-01, -1.3581e-01,
+          1.5895e-01,  1.0321e-01,  9.7477e-01,  1.9791e-01, -1.8182e-01,
+         -1.7713e-01,  9.6725e-01, -6.5476e-04, -2.7719e-01,  9.7751e-01,
+         -6.4817e-02, -2.9085e-01,  8.8610e-01,  6.5753e-02, -2.8648e-01,
+          8.7917e-01, -5.5242e-03, -3.2742e-01,  1.1111e+00, -1.2959e-01,
+         -3.3006e-01,  4.9298e-01,  1.2626e-01, -3.2785e-01,  4.8493e-01,
+         -1.5171e-02, -2.9772e-01,  1.2695e+00, -1.0887e-01, -3.8301e-01,
+          5.5582e-02,  9.4879e-02, -3.7338e-01,  5.1982e-02, -1.2207e-02,
+         -2.8808e-01,  1.3332e+00, -1.7842e-01, -2.5995e-01,  1.0331e-02,
+          1.2858e-01, -2.3615e-01, -1.3632e-02,  5.0941e-03, -3.0843e-01,
+          1.5693e+00, -8.6076e-02, -2.9671e-01,  1.4598e+00,  7.7965e-02,
+         -3.1092e-01,  1.4556e+00, -7.2940e-03, -2.3549e-01,  1.6561e+00,
+         -2.2404e-01, -3.1294e-01,  1.4574e+00,  2.0865e-01, -3.1496e-01,
+          1.4501e+00, -2.3519e-01, -3.5737e-01,  1.1968e+00,  2.1620e-01,
+         -3.5740e-01,  1.1827e+00, -2.9121e-01, -2.6774e-01,  9.4959e-01,
+          2.7067e-01, -2.7838e-01,  9.2700e-01, -7.1368e-03,  1.5177e-02,
+          3.4332e-03, -1.0856e-02,  2.2197e-02,  4.9818e-03, -1.1099e-02,
+          2.1769e-02,  1.2875e-04, -2.1935e-03,  5.6052e-03,  2.8610e-05,
+         -2.6585e-02, -1.1394e-02,  1.0897e-02, -1.5511e-03,  1.1510e-02,
+          2.6643e-03, -2.5936e-03,  3.6356e-03,  3.7909e-04, -9.8714e-03,
+         -2.1301e-03,  1.0564e-02, -1.4032e-02, -1.7806e-03,  4.9675e-03,
+         -6.4958e-03,  3.3996e-03,  5.9366e-04,  1.0596e-02,  6.0318e-03,
+          1.2481e-03, -1.2882e-02,  1.1297e-04,  9.5201e-03, -7.0149e-03,
+          4.5360e-03,  7.2956e-04, -6.7759e-03,  3.8973e-03,  4.6492e-04,
+         -6.7496e-03,  4.0976e-03,  9.0122e-04, -4.9023e-03,  1.0229e-02,
+         -3.7479e-03, -8.5830e-03,  1.8756e-02,  3.7479e-03, -6.5959e-03,
+          7.5026e-03,  2.1243e-03, -5.5007e-03,  7.2933e-03,  5.5647e-03,
+         -9.7273e-03,  1.1092e-02,  1.4591e-03, -1.6355e-02, -8.4405e-04,
+          5.0747e-03, -9.5994e-03,  8.3623e-03,  6.4731e-04]])
+init_pose1 = tensor([[ 0.0000e+00,  0.0000e+00,  8.0511e-01, -1.2322e-03, -7.0556e-01, # old
           8.5901e-02, -9.9506e-01, -9.9287e-02,  7.6269e-04, -3.7206e-04,
           1.1409e-02,  9.9993e-01, -9.9289e-02,  9.9499e-01, -1.1390e-02,
           2.9144e-01,  4.7586e-01, -5.8740e-01,  9.9901e-01, -3.8074e-02,
@@ -80,25 +148,57 @@ init_pose = tensor([[ 0.0000e+00,  0.0000e+00,  8.0511e-01, -1.2322e-03, -7.0556
          -1.8598e-02, -6.4377e-01,  1.6776e-01,  7.7387e-03, -5.7664e-01,
           1.2950e-02, -3.0246e-02, -7.0329e-01,  2.2927e-01]])
 
-
 if __name__ == '__main__':
     print(sys.argv[1:])
     args = parse_args(['@./configs/test_humor_sampling.cfg'])
-    env = Skeleton(args, init_pose, moving_forward_controller, "GLOBAL3")
+    env = Skeleton(args, init_pose, moving_forward_controller, "RELA5")
     test = 0
     if test == 1:
         print("TEST MODE")
-        for i in range(48*9):
+        for i in range(1*9):
             print("ENGINEERING:"+str(i))
             arr = np.zeros(48)
             # arr[7] = -1.
             posneg = (i%9)/2. - 2.
             arr[i//9] = posneg
             offset = tensor(arr, device='cuda:0')
-            env.default_roll_out_split(True, offset, "fea"+str(i//9)+"_"+str(i%9))
-        with open('features.json', 'w') as f:
+            env.default_roll_out_split(True, offset, "fea_zheng"+str(i//9)+"_"+str(i%9))
+        with open('features_zheng.json', 'w') as f:
             json.dump(env.rew_critic_pair, f)
         print("FEATURE ENGINEERING FINISHED!")
+    elif test == 3:
+        print("TEST MODE")
+        for i in range(48*9):
+            print("ROLL:"+str(i))
+            arr = np.zeros(48)
+            # arr[7] = -1.
+            posneg = (i%9)/2. - 2.
+            arr[i//9] = posneg
+            offset = tensor(arr, device='cuda:0')
+            env.default_roll_out_split(False, offset, "fea_sta"+str(i//9)+"_"+str(i%9))
+        with open('features_sta.json', 'w') as f:
+            json.dump(env.rew_critic_pair, f)
+        print("ROLL FINISHED!")
+    elif test == 4:
+        model = A2C("MlpPolicy",env=env, verbose=1) #, learning_rate=0.01)
+        env.forward = model.policy.forward
+        useSaved = True
+        # env.default_roll_out_split()
+        if useSaved:
+            model = A2C.load('agent63WS_STA_RELA700000', env=env)
+            env.forward = model.policy.forward
+            print('Agent Loaded')
+        print('START TESTING')
+        state = env.reset()
+        done = False
+        path = []
+        while not done:
+            action, _ = model.predict(state)
+            state, reward, done, info = env.step(action[0])
+            path.append(state)
+        print('PREDICT END')
+        plt.scatter([s[0][0] for s in path],[s[0][1] for s in path])
+        plt.show()
     elif test == 2:
         # Visualize the critic network, for 5D simple data
         model = A2C("MlpPolicy",env=env, verbose=1) #, learning_rate=0.01)
@@ -107,18 +207,23 @@ if __name__ == '__main__':
         # env.default_roll_out_split()
         if useSaved:
             try:
-                model = A2C.load('agentWS', env=env)
+                model = A2C.load('agentFakeN1000000', env=env)
                 env.forward = model.policy.forward
                 print('Agent Loaded')
             except:
                 pass
-        inpu = torch.cat([tensor([[0,y,0,0,x]], device='cuda:0') for x in np.arange(-0.4,0.4,0.01) for y in np.arange(-1,10,0.1)])
+        inpu = torch.cat([tensor([[x,y,0,0,1,0]], device='cuda:0') for x in np.arange(-10,10,0.1) for y in np.arange(-10,10,0.1)])
         print(inpu.shape)
         actions, value, _ = env.forward(inpu)
         print(value.shape)
-        value = value.reshape((80,-1)).cpu().detach()
-        plt.contour(value.T)
-        plt.savefig("SHOWME.png")
+        actions = actions.reshape((200,-1)).cpu().detach()
+        plt.imshow(actions.T)
+        plt.colorbar()
+        plt.savefig("SHOWME_ACTION.png")
+        value = value.reshape((200,-1)).cpu().detach()
+        plt.imshow(value.T)
+        plt.colorbar()
+        plt.savefig("SHOWME_VALUE.png")
         # plt.show()
     else:
         model = A2C("MlpPolicy",env=env, verbose=1) #, learning_rate=0.01)
@@ -127,7 +232,7 @@ if __name__ == '__main__':
         # env.default_roll_out_split()
         if useSaved:
             try:
-                model = A2C.load('agentWS', env=env)
+                model = A2C.load('agentFake', env=env)
                 env.forward = model.policy.forward
                 print('Agent Loaded')
             except:
@@ -135,11 +240,11 @@ if __name__ == '__main__':
         print('START LEARNING')
         total_step = 100000
         model.learn(total_step)
-        model.save('agent48WS'+str(total_step))
+        model.save('agentFakeN'+str(total_step))
         value_pair = np.array(env.rew_critic_pair)
         # plt.cla()
         # plt.scatter(value_pair[:,0], value_pair[:,1], alpha=np.array(range(len(value_pair)))/len(value_pair))
         # plt.show()
-        with open('zrew_critic_pair5.json', 'w') as f:
+        with open('rew_critic_pair_sta_rela.json', 'w') as f:
             json.dump(env.rew_critic_pair, f)
         
