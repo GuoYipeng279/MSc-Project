@@ -25,19 +25,9 @@ sys.path.append(os.path.join(cur_file_path, '..'))
 
 from humor.utils.logging import Logger, class_name_to_file_name, cp_files, mkdir
 
-moving_forward_controller = [(6,1.5),(30,-1.5),(30,0.5)] 
-left_turn_controller = [(30,0.5)]
-right_turn_controller = [(30,-1.5)]
+navigation_controller = ['forward','right','left']
 
 class Skeleton(Env):
-    '''
-    Idea: the state space is the observable space(339D), the action space is some increment of the state space
-    for each step, use the humor model to provide a default next state, the actor also provide a small increment, according to this default state.
-    Add the humor increment and actor increment together to get the next state.
-    To evaluate the generated state, the reward includes:
-    input the previous state and the generated state to the encoder of humor, compare similarity of the latent distribution to the prior distribution.
-    deduct the physics loss of the generated state, these forms the critic part. 
-    '''
 
     def __init__(self, args_obj, init_pose, controller=None, representer="VAE339toGMM138"):
         '''
@@ -156,7 +146,7 @@ class Skeleton(Env):
         if representer == "GLOBAL5":
             self.observation_space = Box(low=-10*np.ones(5),high=10*np.ones(5)) # agent move in real world space
             self.state_encoder = self.GLOBAL5 # to very low 6D mean position data, use when got a very clear view in advance
-        if representer == "RELA5":
+        if representer == "RELA5": # use this for this project
             # space: [x,y,dx,dy,cos(theta),sin(theta)], for x,y the position, theta the orient angle.
             self.observation_space = Box(low=-np.array([20,20,5,5,1,1]),high=np.array([20,20,5,5,1,1])) # agent move in real world space # free for all rotation
             self.state_encoder = self.RELA5 # to very low 6D mean position data, use when got a very clear view in advance
@@ -167,23 +157,11 @@ class Skeleton(Env):
 
         self.init_pose = init_pose
 
-        # init_pose = {k:tensor([init_pose[k][0]]) for k in self.HuMoR.data_names}
-        # init_pose['pose_body'] = batch_rodrigues(torch.Tensor(init_pose['pose_body']).reshape(-1, 3)).reshape((1, 21*9)) # T x 21 x 9
-        # init_pose['root_orient'] = batch_rodrigues(torch.Tensor(init_pose['root_orient']).reshape(-1, 3)).reshape((1, 9)) # T x (3 x 3)
-        # in_unnorm_data_list = []
-        # for k in self.HuMoR.data_names:
-        #     cur_dat = init_pose[k].to('cpu')
-        #     cur_unnorm_dat = cur_dat.reshape((1, -1))
-        #     in_unnorm_data_list.append(cur_unnorm_dat)
-        # # print(in_unnorm_data_list)
-        # self.init_pose = torch.cat(in_unnorm_data_list, axis=1)
-        # self.init_pose = torch.tensor(self.init_pose, dtype=torch.float32)
-
         # self.init_pose = self.HuMoR.prepare_input(init_pose, 'cpu') # initial pose, in world coo
         self.init_tensor = tensor(self.init_pose, device='cuda:0') # initialize the agent state
         print('Visualizing INITIAL!')
         # print('66INIT',joints)
-        self.strength = 32
+        self.strength = 64 # sample size for Actor.
         self.max_simu = 600
         self.walking_length = self.max_simu
         self.vel = torch.zeros((20,2))
@@ -203,6 +181,10 @@ class Skeleton(Env):
         init_dict = self.HuMoR.split_output(pose)
         del init_dict['contacts']
         self.roll_out_init(pose, init_dict)
+        self.init_matrix2d = torch.tensor([[0.,-1.],[1.,0.]])
+        self.control = None
+        self.control_timer = 0
+        self.init_info = None
         distance = np.random.uniform(0,10)
         angle = np.random.uniform(0,2*np.pi)
         self.objective = np.cos(angle)*distance, np.sin(angle)*distance
@@ -382,6 +364,200 @@ class Skeleton(Env):
         # the more unlikely current state on the GMM model, the more penalty it suffers
         return mean_logprob
 
+    def batched_simu_step(self, decoded: Tensor) -> Tensor:
+        '''
+        Calculate the observations for each output
+        '''
+        B = self.strength
+        temp_dict = self.HuMoR.split_output(decoded)
+        root_orient_mat = temp_dict['root_orient'][:,0,:].view((B, 3, 3))
+        world2aligned_rot = compute_world2aligned_mat(root_orient_mat)
+        # world2aligned_trans = torch.cat([-x_pred_dict['trans'][:,0,:2], torch.zeros((B,1)).to(self.x_past)], axis=1)
+        cur_world_dict = dict()
+        global_world2local_trans = self.global_world2local_trans.expand(B,-1,-1)
+        global_world2local_rot = self.global_world2local_rot.expand(B,-1,-1,-1)
+        trans2joint = self.trans2joint.expand(B,-1,-1,-1)
+        cur_world_dict = self.HuMoR.apply_world2local_trans(
+            global_world2local_trans, 
+            global_world2local_rot, 
+            trans2joint, 
+            temp_dict, cur_world_dict, invert=True)
+        # global_world2local_trans = torch.cat([-cur_world_dict['trans'][:,0:1,:2], torch.zeros((B, 1, 1)).to(self.x_past)], axis=2)
+        global_world2local_rot = torch.matmul(global_world2local_rot, world2aligned_rot.view((B, 1, 3, 3)))
+        states = self.state_encoder(cur_world_dict,global_world2local_rot,B)
+        return states
+
+    def moving(self, decoded: Tensor) -> Tensor:
+        '''
+        Make the agent move forward
+        '''
+        states = self.batched_simu_step(decoded)
+        cosine = states[:,4]
+        distance = states[:,1]
+        selected = 0
+        if torch.max(cosine) < 0.93:
+            selected = torch.argmax(cosine)
+        else:
+            distance = torch.masked_fill(distance, cosine < 0.93, -np.inf)
+            selected = torch.argmax(distance)
+        return decoded[selected].view(1,-1)
+
+    def moving_forward(self, decoded: Tensor) -> Tensor:
+        '''
+        Make the agent move forward
+        '''
+        states = self.batched_simu_step(decoded)
+        init_dir = torch.matmul(self.init_info[4:6], self.init_matrix2d.T)
+        rela = states[:,0:2]-self.init_info[0:2].expand(self.strength,-1)
+        distance = torch.einsum('bi,bi->b', rela, init_dir.expand(self.strength,-1)) # distance moved along the desired direction
+        cosine = torch.einsum('bi,bi->b', self.init_info[4:6].expand(self.strength,-1), states[:,4:6])
+        selected = 0
+        if torch.max(cosine) < 0.93:
+            selected = torch.argmax(cosine)
+        else:
+            distance = torch.masked_fill(distance, cosine < 0.93, np.inf)
+            selected = torch.argmax(distance)
+        return decoded[selected].view(1,-1)
+    
+    def moving_toward(self, decoded: Tensor, target: Tensor) -> Tensor:
+        '''
+        Make the agent move towards some point, when the point is in the front. 
+        '''
+        states = self.batched_simu_step(decoded)
+        diff = target.expand(self.strength,-1)-states[:,:2] # where is the relative coordinate
+        distance = torch.norm(diff, dim=-1) # distance to the target
+        velo = states[:,2:4]
+        angle_dir = states[:,4:6] # face direction
+        angle_dir = torch.matmul(angle_dir, self.init_matrix2d.T)
+        cosine = torch.einsum('bi,bi->b', angle_dir, diff)/torch.norm(diff, dim=-1)
+        selected = 0
+        if torch.max(cosine) < 0.85:
+            cosine = torch.einsum('bi,bi->b', angle_dir, velo)/torch.norm(velo, dim=-1)
+            selected = torch.argmax(cosine)
+            # somehow should use turning behavior, refuse to turn in this mode, force turning will mess up the skeleton
+        elif torch.max(cosine) < 0.93:
+            selected = torch.argmax(cosine) # small deviation, try go back to path by adjustment. 
+        else:
+            distance = torch.masked_fill(distance, cosine < 0.93, np.inf)
+            selected = torch.argmin(distance)
+        return decoded[selected].view(1,-1)
+    
+    def turning(self, decoded: Tensor, ang_velo: float) -> Tensor:
+        '''
+        Control turning by a angular velocity, this action is highly variable
+        '''
+        self.bad = 0
+        turning_matrix = torch.tensor([[np.cos(ang_velo), -np.sin(ang_velo)],[np.sin(ang_velo), np.cos(ang_velo)]], dtype=torch.float32)
+        states = self.batched_simu_step(decoded)
+        now_velo = self.state[0,2:4] # current velo
+        now_dir = now_velo/torch.norm(now_velo) # current velo dir
+        hope_dir = torch.matmul(now_dir, turning_matrix.T).expand(self.strength,-1) # turn a small degree
+        sam_velo = states[:,2:4] # sampled velo
+        sam_speed = torch.norm(sam_velo, dim=-1) # sampled speeds
+        init_speed = torch.norm(self.init_info[2:4]).expand(self.strength) # inital speed
+        sam_dir = sam_velo/sam_speed.unsqueeze(1) # sampled dir
+        cosine = torch.einsum('bi,bi->b', sam_dir, hope_dir)
+        coscos = torch.einsum('bi,bi->b', sam_dir-now_dir, hope_dir-now_dir)
+        diff = torch.abs(sam_speed-init_speed)
+        m1 = torch.masked_fill(cosine, coscos < 0., -np.inf)
+        selected = 0
+        if m1.isfinite().sum().item() < 1:
+            self.bad = 2
+            selected = coscos.argmax()
+            return decoded[selected].view(1,-1)
+        else:
+            cosine = m1
+            # m2 = cosine.masked_fill(diff > 0.3, -np.inf)
+            # if m2.isfinite().sum().item() < 1:
+            #     self.bad = 1
+            #     selected = diff.argmin()
+            #     return decoded[selected].view(1,-1)
+        selected = cosine.argmax()
+        # print('SEL:', cosine[selected], coscos[selected], diff[selected], sam_dir[selected],now_dir, hope_dir[selected])
+        return decoded[selected].view(1,-1)
+            
+
+    def turning1(self, decoded: Tensor, ang_velo: float) -> Tensor:
+        '''
+        Control the skeleton to turn around
+        '''
+        # ang_velo *= self.control_timer
+        self.bad = 0
+        turning_matrix = torch.tensor([[np.cos(ang_velo), -np.sin(ang_velo)],[np.sin(ang_velo), np.cos(ang_velo)]], dtype=torch.float32)
+        now_angle = self.state[0,4:6]
+        init_speed = torch.norm(self.init_info[2:4]).expand(self.strength)
+        best_angle = torch.matmul(now_angle, turning_matrix.T).expand(self.strength, -1)
+        states = self.batched_simu_step(decoded)
+        angle_dir = states[:,4:6] # face direction
+        now_speed = torch.norm(states[:,2:4], dim=-1)
+        cosine = torch.einsum('bi,bi->b', angle_dir, best_angle)
+        selected = 0
+        now_angle = now_angle.expand(self.strength,-1)
+        coscos = torch.einsum('bi,bi->b', angle_dir-now_angle, best_angle-now_angle)
+        mask1 = torch.masked_fill(cosine, coscos < 0., -np.inf)
+        m1 = m2 = None
+        m1 = torch.isfinite(mask1).sum().item()
+        if m1 < 1: print('COSCOS', coscos)
+        if not torch.max(mask1) > -np.inf:
+            selected = torch.argmax(cosine)
+            self.bad = 2
+            print("SELECT1",selected)
+        else:
+            cosine = mask1 # at least turn in the correct direction
+            speed_diff = torch.abs(init_speed-now_speed)
+            mask2 = torch.masked_fill(cosine, torch.abs(init_speed-now_speed) > 0.3, -np.inf)
+            m2 = torch.isfinite(mask2).sum().item()
+            if not torch.max(mask2) > -np.inf:
+                selected = torch.argmin(speed_diff)
+                self.bad = 1
+                print("SELECT2",selected)
+            else:
+                cosine = mask2
+                selected = torch.argmax(cosine)
+                print("SELECT3",selected)
+        # raise NotImplementedError
+        print('M:',m1,m2,"TIMER", self.control_timer)
+        self.control_timer += 1 # effective controlled
+        return decoded[selected].view(1,-1)
+
+    def stoping(self, decoded: Tensor) -> Tensor:
+        '''
+        Stop the skeleton
+        '''
+        states = self.batched_simu_step(decoded)
+        speed = torch.norm(states[:,2:4], dim=-1)
+        selected = 0
+        selected = torch.argmin(speed)
+        return decoded[selected].view(1,-1)
+
+    def bounded_sample(self, bound=6.1) -> Tensor:
+        B = self.strength
+        offsets = torch.zeros(B,48)
+        i = 0
+        while i < B:
+            candidate = torch.randn(48)
+            if torch.norm(candidate) < bound: # bound, check chi table for this, 7 is ~57% most likely, 6 is ~10%
+                offsets[i] = candidate
+                i += 1
+        offsets = offsets.to('cuda:0')
+        return offsets
+
+    def selection(self, control):
+        '''
+        Actor's selectors generating funtion, for navigation task
+        '''
+        self.bad = 0
+        if self.control != control:
+            self.control = control
+            self.control_timer = 0
+            self.init_info = self.state[0,:]
+        if control == 0: return lambda x: self.moving_forward(x)
+        if control == 1: return lambda x: self.turning(x, -np.pi/150) # right turn (anti-clock)
+        if control == 2: return lambda x: self.turning(x, np.pi/150) # left turn
+        if control == 3: return lambda x: self.stoping(x)
+        if control == 4: return lambda x: self.moving_toward(x, torch.zeros(2))
+        raise NotImplementedError
+
     def step(self, controller):
         '''
         A step in this environment: according to previous latent state, the humor model take its default action,
@@ -393,43 +569,11 @@ class Skeleton(Env):
             action = np.zeros(48) # this 48D is fixed
             # action[7] = -1.
             # use = np.argmax(controller)
-            if controller < len(self.controller):
+            if controller < len(self.controller) or True:
                 # action[self.controller[controller][0]] = self.controller[controller][1] # setup which dimensions to control, only the maximum take effect
                 # action = tensor(action, device='cuda:0')
-                B = self.strength
-                def selection(decoded: Tensor) -> Tensor:
-                    temp_dict = self.HuMoR.split_output(decoded)
-                    root_orient_mat = temp_dict['root_orient'][:,0,:].view((B, 3, 3))
-                    world2aligned_rot = compute_world2aligned_mat(root_orient_mat)
-                    # world2aligned_trans = torch.cat([-x_pred_dict['trans'][:,0,:2], torch.zeros((B,1)).to(self.x_past)], axis=1)
-                    cur_world_dict = dict()
-                    global_world2local_trans = self.global_world2local_trans.expand(B,-1,-1)
-                    global_world2local_rot = self.global_world2local_rot.expand(B,-1,-1,-1)
-                    trans2joint = self.trans2joint.expand(B,-1,-1,-1)
-                    cur_world_dict = self.HuMoR.apply_world2local_trans(
-                        global_world2local_trans, 
-                        global_world2local_rot, 
-                        trans2joint, 
-                        temp_dict, cur_world_dict, invert=True)
-                    # global_world2local_trans = torch.cat([-cur_world_dict['trans'][:,0:1,:2], torch.zeros((B, 1, 1)).to(self.x_past)], axis=2)
-                    global_world2local_rot = torch.matmul(global_world2local_rot, world2aligned_rot.view((B, 1, 3, 3)))
-                    states = self.state_encoder(cur_world_dict,global_world2local_rot,B)
-                    distance = torch.norm(states, dim=-1).view(B) # distance to the target
-                    angle_pos = -states[:,0:2] # the target direction
-                    angle_dir = states[:,4:6] # face direction
-                    cosine = torch.einsum('bi,bi->b', angle_dir, angle_pos)/torch.norm(angle_pos, dim=-1)
-                    cosine = states[:,4]
-                    distance = -states[:,1]
-                    selected = 0
-                    if torch.max(cosine) < 0.9:
-                        selected = torch.argmax(cosine)
-                    else:
-                        distance = torch.masked_fill(distance, cosine < 0.9, np.inf)
-                        selected = torch.argmin(distance)
-                    return decoded[selected].view(1,-1)
-                # offset = torch.randn(strength, 48, device='cuda:0')
-                self.past_in = self.past_in.expand(B,-1)
-                self.roll_out_step(False, None, selection)
+                selection = self.selection(controller)
+                self.roll_out_step(True, self.bounded_sample(), selection)
             else:
                 # do nothing, just roaming
                 self.roll_out_step(False)
@@ -564,10 +708,7 @@ class Skeleton(Env):
         decoder_out = sample_out['decoder_out']
 
         if decoder_out.shape[0] > 1 and select_batch is not None:
-            print('IN',decoder_out.shape)
             decoder_out = select_batch(decoder_out)
-
-        print('OUT',decoder_out.shape)
 
         # split output predictions and transform out rotations to matrices
         x_pred_dict = self.HuMoR.split_output(decoder_out, convert_rots=True)
@@ -695,9 +836,12 @@ class Skeleton(Env):
         init_dict = self.HuMoR.split_output(pose)
         del init_dict['contacts']
         self.roll_out_init(pose, init_dict)
+        self.control = None
+        self.control_timer = 0
+        self.init_info = None
         distance = np.random.uniform(0,10)
         angle = np.random.uniform(0,2*np.pi)
-        self.objective = 0.*np.cos(angle)*distance, np.sin(angle)*distance
+        self.objective = np.cos(angle)*distance, np.sin(angle)*distance
         if reborn is not None:
             self.objective = reborn
         self.state = self.state_encoder(init_dict) # initialize the agent state
@@ -744,7 +888,7 @@ class Skeleton(Env):
         init_dict = self.HuMoR.split_output(pose)
         del init_dict['contacts']
         ans = self.HuMoR.roll_out(pose, init_dict, 60)
-        
+
 
     def default_roll_out_split(self, use_mean=False, action=None, save_id=None, simu=None):
         '''
@@ -755,7 +899,8 @@ class Skeleton(Env):
         del init_dict['contacts']
         self.roll_out_init(pose, init_dict)
         for t in range(self.max_simu if simu is None else simu):
-            self.roll_out_step(use_mean=use_mean, action=action)
+            selection = self.selection(4) if t < 100 else self.selection(2)
+            self.roll_out_step(use_mean=use_mean, action=action, select_batch=selection)
             # self.VAE339toMEAN6(self.cur_world_dict)
             self.state = self.state_encoder(self.cur_world_dict)
             view = (self.state.cpu().detach().numpy().tolist()[0], t)
@@ -766,7 +911,7 @@ class Skeleton(Env):
         if save_id is not None:
             # ans = self.HuMoR.roll_out(pose, init_dict, 300)
             print('ROLLING', {k:ans[k].shape if type(ans[k])== Tensor else ans for k in ans})
-            self.scatter_plots = ans['joints'].reshape((300,22,3)).cpu().detach().numpy()
+            self.scatter_plots = ans['joints'].reshape((self.max_simu,22,3)).cpu().detach().numpy()
             # fig, ax = plt.subplots()
             ani = FuncAnimation(self.fig, self.update, frames=self.scatter_plots.shape[0])
             saving = 'myProject/features/roll_out{}.mp4'.format(save_id)
@@ -789,25 +934,6 @@ class Skeleton(Env):
         # build pytorch distrib
         self.gmm_distrib = build_pytorch_gmm(gmm_weights, gmm_means, gmm_covs)
 
-    def back_to_init(self, strength=32):
-        pose = self.init_tensor.reshape(1,1,-1)
-        init_dict = self.HuMoR.split_output(pose)
-        pose_body = init_dict['joints'].expand(strength,-1,-1)
-        joints_vel = torch.norm(init_dict['joints_vel'].reshape((1,1,22,3)),dim=-1).expand(strength,-1,-1)
-        def selection(decoded):
-            temp_dict = self.HuMoR.split_output(decoded)
-            cur_pose_body = temp_dict['joints']
-            cur_joints_vel = torch.norm(temp_dict['joints_vel'].reshape((-1,1,22,3)),dim=-1)
-            md_pose_body,_ = torch.max(torch.abs(pose_body-cur_pose_body), dim=-1)
-            md_joints_vel,_ = torch.max(torch.abs(cur_joints_vel), dim=-1)
-            loss = md_pose_body.view(-1)+md_joints_vel.view(-1)
-            print(md_pose_body.view(-1))
-            print(md_joints_vel.view(-1))
-            print(torch.argmin(loss),loss)
-            return decoded[torch.argmin(loss)].view(1,-1)
-        # offset = torch.randn(strength, 48, device='cuda:0')
-        self.past_in = self.past_in.expand(strength,-1)
-        self.roll_out_step(False, None, selection) # batch size=strength
 
 def ploting(ans,ax1,ax2):
     '''

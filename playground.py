@@ -9,12 +9,14 @@ sys.path.append(os.path.join(cur_file_path, '..'))
 
 from humor.test.test_humor import parse_args
 from skeleton import Skeleton, ploting, moving_forward_controller
-from main import init_pose
+from main import init_pose, graph
 from torch import tensor
 
 args = parse_args(['@./configs/test_humor_sampling.cfg'])
 env = Skeleton(args, init_pose, controller=moving_forward_controller, representer='RELA5')
 env.reset()
+
+p = 0
 
 def update_plot(_=None):  # Accept a parameter (ignored)
     # Update the plot based on slider values
@@ -29,9 +31,13 @@ def update_plot(_=None):  # Accept a parameter (ignored)
     # env.reset()
     for t in range(step):
         state, _,_,_ = env.step(amplitude)
-        plt.scatter(state[0][0], state[0][1])
-        # joint = env.cur_input_dict['joints'].reshape(22,3).cpu().detach()
-        # plt.scatter(joint[:,1],joint[:,2])
+        color = ['blue', 'orange', 'red']
+        ax2.scatter(state[0][0], state[0][1],c=color[env.bad])
+    joint = env.cur_input_dict['joints'].reshape(22,3).cpu().detach()
+    for i in range(joint.shape[0]):
+        for c in graph[i]:
+            ax1.plot([joint[i,p],joint[c,p]],[joint[i,2],joint[c,2]], c='black')
+    ax1.scatter(joint[:,p],joint[:,2])
     canvas.draw()
 
 # def update_plot(_=None, key=None):  # Accept a parameter (ignored)
@@ -50,7 +56,11 @@ def reset():
     Reset the playground, so that the agent go back to the reborn point with origin pose
     '''
     env.reset(save=False)
-    plt.cla()
+    # plt.cla()
+    ax1.cla()
+    ax2.cla()
+    ax1.axis('equal')
+    ax2.axis('equal')
     update_plot()
     canvas.draw()
 
@@ -78,8 +88,10 @@ close_button = ttk.Button(root, text='Close', command=close_window)
 close_button.pack()
 
 # Create matplotlib figure and plot
-fig = plt.figure(figsize=(10,10))
-plt.axis('equal')
+# fig = plt.figure(figsize=(10,10))
+fig, (ax1,ax2) = plt.subplots(1,2, gridspec_kw={'width_ratios': [1, 3]}, figsize=(20,10))
+ax1.axis('equal')
+ax2.axis('equal')
 # x = np.linspace(0, 2 * np.pi, 100)s
 # line, = ax.plot(x, np.sin(x))
 # ax1.axis('equal')

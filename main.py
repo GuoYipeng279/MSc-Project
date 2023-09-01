@@ -10,7 +10,7 @@ from matplotlib import pyplot as plt
 from torch import tensor
 import torch
 from stable_baselines3 import A2C
-from skeleton import Skeleton, moving_forward_controller, left_turn_controller, right_turn_controller
+from skeleton import Skeleton, navigation_controller
 init_pose = tensor([[ 0.0000e+00,  0.0000e+00,  9.4889e-01, -7.1368e-03,  1.5177e-02, # sta
           3.4314e-03, -9.9999e-01, -3.4565e-03, -2.2632e-04,  5.9605e-08,
          -6.5348e-02,  9.9786e-01, -3.4639e-03,  9.9786e-01,  6.5348e-02,
@@ -148,20 +148,25 @@ init_pose1 = tensor([[ 0.0000e+00,  0.0000e+00,  8.0511e-01, -1.2322e-03, -7.055
          -1.8598e-02, -6.4377e-01,  1.6776e-01,  7.7387e-03, -5.7664e-01,
           1.2950e-02, -3.0246e-02, -7.0329e-01,  2.2927e-01]])
 
+graph = {0:[1,2,3],1:[4],2:[5],3:[6],4:[7],5:[8],6:[9],7:[10],8:[11],9:[12],10:[],
+         11:[],12:[13,14,15],13:[16],14:[17],15:[],16:[18],17:[19],18:[20],19:[21],20:[],21:[]}
+
 if __name__ == '__main__':
     print(sys.argv[1:])
     args = parse_args(['@./configs/test_humor_sampling.cfg'])
-    env = Skeleton(args, init_pose, moving_forward_controller, "RELA5")
-    test = 0
+    env = Skeleton(args, init_pose, navigation_controller, "RELA5")
+    test = 4
     if test == 1:
+        # Check features
         print("TEST MODE")
-        for i in range(1*9):
+        for i in range(1):
             print("ENGINEERING:"+str(i))
             arr = np.zeros(48)
             # arr[7] = -1.
             posneg = (i%9)/2. - 2.
             arr[i//9] = posneg
-            offset = tensor(arr, device='cuda:0')
+            # offset = tensor(arr, device='cuda:0')
+            offset = env.bounded_sample()
             env.default_roll_out_split(True, offset, "fea_zheng"+str(i//9)+"_"+str(i%9))
         with open('features_zheng.json', 'w') as f:
             json.dump(env.rew_critic_pair, f)
@@ -180,12 +185,13 @@ if __name__ == '__main__':
             json.dump(env.rew_critic_pair, f)
         print("ROLL FINISHED!")
     elif test == 4:
+        # run the trained model
         model = A2C("MlpPolicy",env=env, verbose=1) #, learning_rate=0.01)
         env.forward = model.policy.forward
         useSaved = True
         # env.default_roll_out_split()
         if useSaved:
-            model = A2C.load('agent63WS_STA_RELA700000', env=env)
+            model = A2C.load('agentTrue3000000', env=env)
             env.forward = model.policy.forward
             print('Agent Loaded')
         print('START TESTING')
@@ -198,6 +204,7 @@ if __name__ == '__main__':
             path.append(state)
         print('PREDICT END')
         plt.scatter([s[0][0] for s in path],[s[0][1] for s in path])
+        plt.savefig('SHOWME_PRED.png')
         plt.show()
     elif test == 2:
         # Visualize the critic network, for 5D simple data
@@ -207,7 +214,7 @@ if __name__ == '__main__':
         # env.default_roll_out_split()
         if useSaved:
             try:
-                model = A2C.load('agentFakeN1000000', env=env)
+                model = A2C.load('agentTrue3000000', env=env)
                 env.forward = model.policy.forward
                 print('Agent Loaded')
             except:
@@ -226,21 +233,22 @@ if __name__ == '__main__':
         plt.savefig("SHOWME_VALUE.png")
         # plt.show()
     else:
+        # Training
         model = A2C("MlpPolicy",env=env, verbose=1) #, learning_rate=0.01)
         env.forward = model.policy.forward
-        useSaved = False
+        useSaved = True
         # env.default_roll_out_split()
         if useSaved:
             try:
-                model = A2C.load('agentFake', env=env)
+                model = A2C.load('agentTrue1000000', env=env)
                 env.forward = model.policy.forward
                 print('Agent Loaded')
             except:
                 pass
         print('START LEARNING')
-        total_step = 100000
+        total_step = 3000000
         model.learn(total_step)
-        model.save('agentFakeN'+str(total_step))
+        model.save('agentTrue'+str(total_step))
         value_pair = np.array(env.rew_critic_pair)
         # plt.cla()
         # plt.scatter(value_pair[:,0], value_pair[:,1], alpha=np.array(range(len(value_pair)))/len(value_pair))
