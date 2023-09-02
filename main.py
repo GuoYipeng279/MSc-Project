@@ -10,6 +10,19 @@ from matplotlib import pyplot as plt
 from torch import tensor
 import torch
 from stable_baselines3 import A2C
+from stable_baselines3.common.callbacks import SaveVecEnvCallback
+
+# Define a callback to save the best model
+best_model_callback = SaveVecEnvCallback(
+    check_freq=1000,  # Specify how often to check the performance (e.g., every 1000 steps)
+    save_path='./saved_models',  # Specify the directory to save the models
+    name_prefix='best_model',  # Prefix for the saved model file
+    verbose=1,  # Verbosity level
+    save_freq=1,  # Save the best model every time it's found
+    save_replay_buffer=False,  # Whether to save the replay buffer (if applicable)
+    monitor='eval_reward',  # The evaluation metric to monitor (you can change this)
+    mode='max',  # Specify 'max' if you want to maximize the evaluation metric
+)
 from skeleton import Skeleton, navigation_controller
 init_pose = tensor([[ 0.0000e+00,  0.0000e+00,  9.4889e-01, -7.1368e-03,  1.5177e-02, # sta
           3.4314e-03, -9.9999e-01, -3.4565e-03, -2.2632e-04,  5.9605e-08,
@@ -253,7 +266,7 @@ if __name__ == '__main__':
                 pass
         print('START LEARNING')
         total_step = 1500000
-        model.learn(total_step)
+        model.learn(total_step, callback=best_model_callback)
         model.save('agentNAA'+str(total_step))
         value_pair = np.array(env.rew_critic_pair)
         # plt.cla()
