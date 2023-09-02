@@ -155,7 +155,7 @@ if __name__ == '__main__':
     print(sys.argv[1:])
     args = parse_args(['@./configs/test_humor_sampling.cfg'])
     env = Skeleton(args, init_pose, navigation_controller, "RELA5")
-    test = 4
+    test = 0
     if test == 1:
         # Check features
         print("TEST MODE")
@@ -191,7 +191,7 @@ if __name__ == '__main__':
         useSaved = True
         # env.default_roll_out_split()
         if useSaved:
-            model = A2C.load('agentNA300000', env=env)
+            model = A2C.load('agentNAA300000', env=env)
             env.forward = model.policy.forward
             print('Agent Loaded')
         print('START TESTING')
@@ -203,7 +203,13 @@ if __name__ == '__main__':
             state, reward, done, info = env.step(action[0])
             path.append(state)
         print('PREDICT END')
-        plt.scatter([s[0][0] for s in path],[s[0][1] for s in path])
+        p = 0
+        joint = env.cur_input_dict['joints'].reshape(22,3).cpu().detach()
+        for i in range(joint.shape[0]):
+            for c in graph[i]:
+                env.ax1.plot([joint[i,p],joint[c,p]],[joint[i,2],joint[c,2]], c='black')
+        env.ax1.scatter(joint[:,p],joint[:,2])
+        env.ax2.scatter([s[0][0] for s in path],[s[0][1] for s in path])
         plt.savefig('SHOWME_PRED2.png')
         plt.show()
     elif test == 2:
@@ -214,7 +220,7 @@ if __name__ == '__main__':
         # env.default_roll_out_split()
         if useSaved:
             try:
-                model = A2C.load('agentTrue3000000', env=env)
+                model = A2C.load('agentNAA300000', env=env)
                 env.forward = model.policy.forward
                 print('Agent Loaded')
             except:
@@ -236,19 +242,19 @@ if __name__ == '__main__':
         # Training
         model = A2C("MlpPolicy",env=env, verbose=1) #, learning_rate=0.01)
         env.forward = model.policy.forward
-        useSaved = False
+        useSaved = True
         # env.default_roll_out_split()
         if useSaved:
             try:
-                model = A2C.load('agentTrue1000000', env=env)
+                model = A2C.load('agentNAA300000', env=env)
                 env.forward = model.policy.forward
                 print('Agent Loaded')
             except:
                 pass
         print('START LEARNING')
-        total_step = 300000
+        total_step = 1500000
         model.learn(total_step)
-        model.save('agentNA'+str(total_step))
+        model.save('agentNAA'+str(total_step))
         value_pair = np.array(env.rew_critic_pair)
         # plt.cla()
         # plt.scatter(value_pair[:,0], value_pair[:,1], alpha=np.array(range(len(value_pair)))/len(value_pair))

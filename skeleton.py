@@ -533,11 +533,14 @@ class Skeleton(Env):
     def critic_selector(self, decoded) -> Tensor:
         states = self.batched_simu_step(decoded)
         actions, value, _ = self.forward(states.to('cuda:0'))
+        value = value.cpu().detach().view(self.strength)
         face = states[:,4:6]
         dir = torch.matmul(face, self.init_matrix2d.T) # turn a small degree
         velo = states[:,2:4]
-        consine = torch.einsum('bi,bi->b', dir, velo)/torch.norm(velo, dim=-1)
-        m1 = torch.masked_fill(value, consine < 0.7, -np.inf)
+        cosine = torch.einsum('bi,bi->b', dir, velo)/torch.norm(velo, dim=-1)
+        # print(value.shape, cosine.shape)
+        m1 = torch.masked_fill(value, cosine < 0.7, -np.inf)
+        # print(m1.shape)
         selected = torch.argmax(m1) # get the argmax of critic value
         return decoded[selected].view(1,-1)
 
