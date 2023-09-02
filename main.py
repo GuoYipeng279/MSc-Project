@@ -191,7 +191,7 @@ if __name__ == '__main__':
         useSaved = True
         # env.default_roll_out_split()
         if useSaved:
-            model = A2C.load('agentTrue3000000', env=env)
+            model = A2C.load('agentNA300000', env=env)
             env.forward = model.policy.forward
             print('Agent Loaded')
         print('START TESTING')
@@ -204,7 +204,7 @@ if __name__ == '__main__':
             path.append(state)
         print('PREDICT END')
         plt.scatter([s[0][0] for s in path],[s[0][1] for s in path])
-        plt.savefig('SHOWME_PRED.png')
+        plt.savefig('SHOWME_PRED2.png')
         plt.show()
     elif test == 2:
         # Visualize the critic network, for 5D simple data
@@ -236,7 +236,7 @@ if __name__ == '__main__':
         # Training
         model = A2C("MlpPolicy",env=env, verbose=1) #, learning_rate=0.01)
         env.forward = model.policy.forward
-        useSaved = True
+        useSaved = False
         # env.default_roll_out_split()
         if useSaved:
             try:
@@ -246,9 +246,9 @@ if __name__ == '__main__':
             except:
                 pass
         print('START LEARNING')
-        total_step = 3000000
+        total_step = 300000
         model.learn(total_step)
-        model.save('agentTrue'+str(total_step))
+        model.save('agentNA'+str(total_step))
         value_pair = np.array(env.rew_critic_pair)
         # plt.cla()
         # plt.scatter(value_pair[:,0], value_pair[:,1], alpha=np.array(range(len(value_pair)))/len(value_pair))

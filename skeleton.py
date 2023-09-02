@@ -532,7 +532,7 @@ class Skeleton(Env):
 
     def critic_selector(self, decoded) -> Tensor:
         states = self.batched_simu_step(decoded)
-        actions, value, _ = self.forward(states)
+        actions, value, _ = self.forward(states.to('cuda:0'))
         selected = torch.argmax(value) # get the argmax of critic value
         return decoded[selected].view(1,-1)
 
