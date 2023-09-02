@@ -26,6 +26,7 @@ sys.path.append(os.path.join(cur_file_path, '..'))
 from humor.utils.logging import Logger, class_name_to_file_name, cp_files, mkdir
 
 navigation_controller = ['forward','right','left']
+navigation_controller = ['navigation']
 
 class Skeleton(Env):
 
@@ -475,7 +476,6 @@ class Skeleton(Env):
         selected = cosine.argmax()
         # print('SEL:', cosine[selected], coscos[selected], diff[selected], sam_dir[selected],now_dir, hope_dir[selected])
         return decoded[selected].view(1,-1)
-            
 
     def turning1(self, decoded: Tensor, ang_velo: float) -> Tensor:
         '''
@@ -530,6 +530,12 @@ class Skeleton(Env):
         selected = torch.argmin(speed)
         return decoded[selected].view(1,-1)
 
+    def critic_selector(self, decoded) -> Tensor:
+        states = self.batched_simu_step(decoded)
+        actions, value, _ = self.forward(states)
+        selected = torch.argmax(value) # get the argmax of critic value
+        return decoded[selected].view(1,-1)
+
     def bounded_sample(self, bound=6.1) -> Tensor:
         B = self.strength
         offsets = torch.zeros(B,48)
@@ -542,10 +548,12 @@ class Skeleton(Env):
         offsets = offsets.to('cuda:0')
         return offsets
 
-    def selection(self, control):
+    def selection(self, control, use_critic=False):
         '''
         Actor's selectors generating funtion, for navigation task
         '''
+        if use_critic:
+            return lambda x: self.critic_selector(x)
         self.bad = 0
         if self.control != control:
             self.control = control
@@ -572,7 +580,7 @@ class Skeleton(Env):
             if controller < len(self.controller) or True:
                 # action[self.controller[controller][0]] = self.controller[controller][1] # setup which dimensions to control, only the maximum take effect
                 # action = tensor(action, device='cuda:0')
-                selection = self.selection(controller)
+                selection = self.selection(controller, use_critic=True)
                 self.roll_out_step(True, self.bounded_sample(), selection)
             else:
                 # do nothing, just roaming
