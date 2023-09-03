@@ -157,7 +157,7 @@ if __name__ == '__main__':
     print(sys.argv[1:])
     args = parse_args(['@./configs/test_humor_sampling.cfg'])
     env = Skeleton(args, init_pose, navigation_controller, "RELA5")
-    test = 0
+    test = 4
     if test == 1:
         # Check features
         print("TEST MODE")
@@ -193,7 +193,7 @@ if __name__ == '__main__':
         useSaved = True
         # env.default_roll_out_split()
         if useSaved:
-            model = A2C.load('agentNAA300000', env=env)
+            model = A2C.load('agentNAA1500000', env=env)
             env.forward = model.policy.forward
             print('Agent Loaded')
         print('START TESTING')
@@ -248,17 +248,17 @@ if __name__ == '__main__':
         # env.default_roll_out_split()
         if useSaved:
             try:
-                model = A2C.load('agentNAA300000', env=env)
+                model = A2C.load('agentNAA1500000', env=env)
                 env.forward = model.policy.forward
                 print('Agent Loaded')
             except:
                 pass
         print('START LEARNING')
-        total_step = 1500000
-        eval_callback = EvalCallback(model, best_model_save_path="./myProject/logs/",
-                             log_path="./myProject/logs/", eval_freq=500,
-                             deterministic=True, render=False)
-        model.learn(total_step, callback=eval_callback)
+        total_step = 2000000
+        # eval_callback = EvalCallback(model, best_model_save_path="./myProject/logs/",
+        #                      log_path="./myProject/logs/", eval_freq=500,
+        #                      deterministic=True, render=False)
+        model.learn(total_step)#, callback=eval_callback)
         model.save('agentNAA'+str(total_step))
         value_pair = np.array(env.rew_critic_pair)
         # plt.cla()
