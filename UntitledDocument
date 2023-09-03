@@ -1,0 +1,111 @@
+source /vol/bitbucket/yg2719/env/bin/activate
+du -h --max-depth=1
+cd /vol/bitbucket/yg2719/GroupProjectFiles
+/vol/bitbucket/yg2719/env/bin/python3
+/vol/bitbucket/yg2719/env/bin/activate
+
+export PENV=/vol/bitbucket/yg2719/myenv
+python3 -m virtualenv $PENV
+ls -al $PENV
+
+146.169.205.162
+ssh pi@146.169.143.110
+
+mac: b8:27:eb:85:1f:03
+cd prac-files/robotics31
+
+heroku logs --tail --app yg2719-simplewebapp
+ssh yg2719@cloud-vm-45-194.doc.ic.ac.uk
+heroku login -i password:
+4ffe8f28-0e66-4a36-8a12-dbde5a9d675b
+sudo ufw allow 5000
+ssh-keygen -o -t rsa -b 4096 -C "yg2719@ic.ac.uk"
+
+sudo usermod -a -G ssh_users <username>
+sudo usermod -a -G sudo <username>
+
+https://yg2719-simplewebapp.herokuapp.com/
+
+/vol/lab/clingo5/clingo
+
+/vol/lab/clingo5/clingo 0 coursework1.lp valid1-coursework1.lp
+/vol/lab/clingo5/clingo 0 coursework.lp
+
+yg2719
+Ss@97209258
+
+FROM python:3
+pip install git+https://github.com/nghorbani/AMASS.git
+# WORKDIR /usr/src/app
+
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+CMD [ "python", "./wsgi.py" ]
+
+Generating public/private rsa key pair.
+Enter file in which to save the key (/home/yg2719/.ssh/id_rsa):
+Created directory '/home/yg2719/.ssh'.
+Enter passphrase (empty for no passphrase):
+Enter same passphrase again:
+Your identification has been saved in /home/yg2719/.ssh/id_rsa
+Your public key has been saved in /home/yg2719/.ssh/id_rsa.pub
+
+tmpd9t9knqt
+
+/homes/yg2719/MScAI/GroupProject/devops-python-group-7/literature_searcher/server.sh diffusion.py
+
+ssh gpucluster2.doc.ic.ac.uk
+cd /vol/bitbucket/yg2719/IndividualProject/humor
+bash monitor.sh 5
+sbatch humor.sh
+nvidia-smi -l 30
+squeue -u yg2719
+code slurm20-93271.out
+conda activate pytorch3d
+sbatch /vol/bitbucket/shared/slurmseg.sh
+cp /homes/yg2719/MScAI/GroupProject/devops-python-group-7/literature_searcher/test.py /vol/bitbucket/yg2719/GroupProjectFiles
+cp /homes/yg2719/MScAI/GroupProject/devops-python-group-7/literature_searcher/main.sh /vol/bitbucket/yg2719
+cp /homes/yg2719/MScAI/GroupProject/devops-python-group-7/literature_searcher/diffusion.py /vol/bitbucket/yg2719/GroupProjectFiles
+
+
+ps aux | grep jedit
+
+
+
+
+find ./ -name "*.tar.bz2" -exec tar -xjf {} -C /vol/bitbucket/yg2719/IndividualProject/humor/data/amass_raw \;
+
+
+
+
+
+primes = [
+    2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53, 59, 61, 67, 71,
+    73, 79, 83, 89, 97, 101, 103, 107, 109, 113, 127, 131, 137, 139, 149, 151,
+    157, 163, 167, 173, 179, 181, 191, 193, 197, 199, 211, 223, 227, 229, 233,
+    239, 241, 251, 257, 263, 269, 271, 277, 281, 283, 293, 307, 311, 313, 317,
+    331, 337, 347, 349, 353, 359, 367, 373, 379, 383, 389, 397, 401, 409, 419,
+    421, 431, 433, 439, 443, 449, 457, 461, 463, 467, 479, 487, 491, 499, 503,
+    509, 521, 523, 541, 547, 557, 563, 569, 571, 577, 587, 593, 599, 601, 607,
+    613, 617, 619, 631, 641, 643, 647, 653, 659, 661, 673, 677, 683, 691, 701,
+    709, 719, 727, 733, 739, 743, 751, 757, 761, 769, 773, 787, 797, 809, 811,
+    821, 823, 827, 829, 839, 853, 857, 859, 863, 877, 881, 883, 887, 907, 911,
+    919, 929, 937, 941, 947, 953, 967, 971, 977, 983, 991, 997]
+
+
+
+
+
+
+
+/vol/bitbucket/yg2719/IndividualProject/Male1_bvh/
+
+Note: launching vscode from terminal solve the problem no .net sdk. SEE:
+https://github.com/dotnet/vscode-csharp/wiki/Troubleshooting:-'The-.NET-Core-SDK-cannot-be-located.'-errors
+
+
+8.11: feature engineer, set batch, global pos
+8.17: forward funtion indeed provide Boxed values, by clip directly, in on_policy_algorithm.py
