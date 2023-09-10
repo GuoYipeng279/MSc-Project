@@ -63,7 +63,7 @@ bash monitor.sh 5
 sbatch humor.sh
 nvidia-smi -l 30
 squeue -u yg2719
-code slurm20-93271.out
+code slurm20-94620.out
 conda activate pytorch3d
 sbatch /vol/bitbucket/shared/slurmseg.sh
 cp /homes/yg2719/MScAI/GroupProject/devops-python-group-7/literature_searcher/test.py /vol/bitbucket/yg2719/GroupProjectFiles

@@ -8,12 +8,12 @@ cur_file_path = os.path.dirname(os.path.realpath(__file__))
 sys.path.append(os.path.join(cur_file_path, '..'))
 
 from humor.test.test_humor import parse_args
-from skeleton import Skeleton, ploting, moving_forward_controller
+from skeleton import Skeleton, ploting, navigation_controller
 from main import init_pose, graph
 from torch import tensor
 
 args = parse_args(['@./configs/test_humor_sampling.cfg'])
-env = Skeleton(args, init_pose, controller=moving_forward_controller, representer='RELA5')
+env = Skeleton(args, init_pose, controller=navigation_controller, representer='RELA5')
 env.reset()
 
 p = 0

@@ -185,10 +185,12 @@ class Skeleton(Env):
         self.init_matrix2d = torch.tensor([[0.,-1.],[1.,0.]])
         self.control = None
         self.control_timer = 0
+        self.run_some = 200*0
         self.init_info = None
         distance = np.random.uniform(0,10)
         angle = np.random.uniform(0,2*np.pi)
         self.objective = np.cos(angle)*distance, np.sin(angle)*distance
+        self.target_stack = [self.objective]
         print('OBJECTIVE', self.objective)
         self.state = self.state_encoder(init_dict) # initialize the agent state
         # print("INIT INI", self.init_pose)
@@ -236,6 +238,20 @@ class Skeleton(Env):
         ans = cur_state.cpu().detach()
         return ans
 
+    def coodinate_tranform(self, state, ans, global_world2local_rot, B):
+        '''
+        control the state with in 7m from origin, for Crtitc input.
+        '''
+        norm = torch.mean(torch.norm(ans[:,:2], dim=-1))
+        mean = torch.mean(ans[:,:2], dim=0)
+        if norm > 6.:
+            self.target_stack.append((mean+tensor(self.target_stack[-1]))/2)
+        elif norm < 1.1 and self.target_stack:
+            self.target_stack.pop()
+        else:
+            return ans
+        return self.RELA5(state, global_world2local_rot, B)
+
     def RELA5(self, state, global_world2local_rot=None, B=1):
         '''
         Return a 5D vector, [[position:2],[velocity:2],[angle:1]]
@@ -249,8 +265,13 @@ class Skeleton(Env):
         data = [trans, vel, orient]
         # data = [trans, torch.mean(self.vel, 0).reshape(1,-1), orient]
         cur_state = torch.cat(data, dim=-1)
-        ans = cur_state
-        ans[:,:2] = ans[:,:2]-tensor(self.objective).view(1,-1).expand(B,-1)
+        ans = cur_state[:,:]
+        ans[:,:2] = ans[:,:2]-tensor(self.objective[0]).view(1,-1).expand(B,-1)
+        # if self.target_stack:
+        #     ans[:,:2] = ans[:,:2]-tensor(self.target_stack[-1]).view(1,-1).expand(B,-1)
+        # else:
+        #     ans[:,:2] = ans[:,:2]-tensor(self.objective[0]).view(1,-1).expand(B,-1)
+        # ans = self.coodinate_tranform(state, ans, global_world2local_rot, B)
         return ans
 
     def navigator_reward(self):
@@ -544,7 +565,11 @@ class Skeleton(Env):
         selected = torch.argmax(m1) # get the argmax of critic value
         return decoded[selected].view(1,-1)
 
-    def bounded_sample(self, bound=6.1) -> Tensor:
+    def bounded_sample(self, bound=np.inf) -> Tensor:
+        '''
+        This is the sampler inside the Actor, it generates 48D bounded samples,
+        sample size controlled by self.strength
+        '''
         B = self.strength
         offsets = torch.zeros(B,48)
         i = 0
@@ -574,7 +599,7 @@ class Skeleton(Env):
         if control == 4: return lambda x: self.moving_toward(x, torch.zeros(2))
         raise NotImplementedError
 
-    def step(self, controller):
+    def step(self, controller, use_critic=True):
         '''
         A step in this environment: according to previous latent state, the humor model take its default action,
         then the agent add on a trained increment of the default humor action, base on the current state given by humor. 
@@ -588,8 +613,11 @@ class Skeleton(Env):
             if controller < len(self.controller) or True:
                 # action[self.controller[controller][0]] = self.controller[controller][1] # setup which dimensions to control, only the maximum take effect
                 # action = tensor(action, device='cuda:0')
-                selection = self.selection(controller, use_critic=True)
-                self.roll_out_step(True, self.bounded_sample(), selection)
+                selection = self.selection(controller, use_critic=use_critic)
+                self.roll_out_step(True, self.bounded_sample(5.6), self.selection(1) if self.walking_length < 150 else self.selection(0))
+                # action[6] = 1.5
+                # self.roll_out_step(True, tensor(action, device='cuda:0').reshape(1,48))
+                # self.roll_out_step(True, self.bounded_sample(5.6), selection)
             else:
                 # do nothing, just roaming
                 self.roll_out_step(False)
@@ -858,10 +886,21 @@ class Skeleton(Env):
         distance = np.random.uniform(0,10)
         angle = np.random.uniform(0,2*np.pi)
         self.objective = np.cos(angle)*distance, np.sin(angle)*distance
+        self.target_stack = [tensor(self.objective)]
         if reborn is not None:
             self.objective = reborn
+            if type(reborn) == list:
+                reborn = [tensor(e) for e in reborn]
+                reborn.reverse() # FIFO
+                self.target_stack = reborn
+                print('STACK',self.target_stack)
+            else:
+                self.target_stack = [tensor(reborn)]
         self.state = self.state_encoder(init_dict) # initialize the agent state
         print('OBJECTIVE RES', self.objective)
+        if self.run_some > 0:
+            for _ in range(np.random.randint(0,self.run_some)):
+                self.step(0, use_critic=False) # run for some steps for initial
         return self.state
 
     def simple_vis(self, pose, old=None):

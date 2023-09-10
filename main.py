@@ -153,11 +153,32 @@ init_pose1 = tensor([[ 0.0000e+00,  0.0000e+00,  8.0511e-01, -1.2322e-03, -7.055
 graph = {0:[1,2,3],1:[4],2:[5],3:[6],4:[7],5:[8],6:[9],7:[10],8:[11],9:[12],10:[],
          11:[],12:[13,14,15],13:[16],14:[17],15:[],16:[18],17:[19],18:[20],19:[21],20:[],21:[]}
 
+graph1 = {0:None,1:0,2:0,3:0,4:1,5:2,6:3,7:4,8:5,9:6,10:7,11:8,12:9,13:12,14:12,15:12,16:13,17:14,18:16,19:17,20:18,21:19}
+
+def green_to_red(num_colors):
+
+    # Define the RGB values for green and red
+    green = np.array([0, 0, 255])
+    red = np.array([255, 0, 0])
+
+    # Generate a list of colors by linearly interpolating between green and red
+    colors = []
+    for i in range(num_colors):
+        # Calculate the intermediate color by linear interpolation
+        intermediate_color = (green * (num_colors - i - 1) + red * i) / (num_colors - 1)
+        
+        # Convert the RGB values to hexadecimal format
+        hex_color = '#{:02X}{:02X}{:02X}'.format(int(intermediate_color[0]), int(intermediate_color[1]), int(intermediate_color[2]))
+        
+        colors.append(hex_color)
+
+    return colors
+
 if __name__ == '__main__':
     print(sys.argv[1:])
     args = parse_args(['@./configs/test_humor_sampling.cfg'])
     env = Skeleton(args, init_pose, navigation_controller, "RELA5")
-    test = 4
+    test = 4 # choose function
     if test == 1:
         # Check features
         print("TEST MODE")
@@ -186,6 +207,101 @@ if __name__ == '__main__':
         with open('features_sta.json', 'w') as f:
             json.dump(env.rew_critic_pair, f)
         print("ROLL FINISHED!")
+    elif test == 6:
+        # run the trained model
+        model = A2C.load('agentNAA2000001', env=env)
+        env.forward = model.policy.forward
+        print('Agent Loaded')
+        print('START TESTING')
+        square = [(0,5),(0,10),(5,10),(10,10),(10,5),(10,0),(5,0),(0,0)]
+        lif = []
+        for s in square:
+            state = env.reset(reborn=[(0,5),(5,5),(5,0),(0,0)])
+            env.max_simu = 9999
+            done = False
+            colors = green_to_red(4)
+            while not done:
+                action, _ = model.predict(state)
+                state, reward, done, info = env.step(action[0])
+                # path.append(state)
+                joint = env.cur_world_dict['joints'].reshape(22,3).cpu().detach()
+                lif.append(joint)
+        
+        colors = green_to_red(len(lif))
+        for i, joint in enumerate(lif):
+            plt.scatter(joint[:,0],joint[:,1],s=0.3,c=colors[i])
+        print('PREDICT END')
+        # fig = plt.figure()
+        # plt.axis('equal')
+        # env.ax2.scatter([s[0][0] for s in path],[s[0][1] for s in path])
+        # plt.savefig('SHOWME_PRED2.png')
+        plt.savefig('SHOWME_PRED3.png')
+        plt.show()
+    elif test == 5:
+        # run the trained model
+        model = A2C("MlpPolicy",env=env, verbose=1) #, learning_rate=0.01)
+        env.forward = model.policy.forward
+        useSaved = True
+        # env.default_roll_out_split()
+        if useSaved:
+            model = A2C.load('agentNAA2000001', env=env)
+            env.forward = model.policy.forward
+            print('Agent Loaded')
+        print('START TESTING')
+        state = env.reset(reborn=(0,-5))
+        done = False
+        # path = []
+        fig, (sta, m1,m2, end) = plt.subplots(1, 4, gridspec_kw={'width_ratios': [1, 1, 1, 1]}, figsize=(30,18))
+        sta.axis('equal')
+        m1.axis('equal')
+        m2.axis('equal')
+        end.axis('equal')
+        colors = green_to_red(4)
+        p = 0
+        joint = env.cur_input_dict['joints'].reshape(22,3).cpu().detach()
+        for i in range(joint.shape[0]):
+            for c in graph[i]:
+                sta.plot([joint[i,p],joint[c,p]],[joint[i,2],joint[c,2]], c='black')
+        sta.scatter(joint[:,p],joint[:,2],c=colors[0])
+        lif = []
+        ii = 0
+        while not done:
+            print(i)
+            action, _ = model.predict(state)
+            state, reward, done, info = env.step(action[0])
+            # path.append(state)
+            joint = env.cur_world_dict['joints'].reshape(22,3).cpu().detach()
+            lif.append(joint)
+            if ii == 60:
+                print('asdasd')
+                p = 0
+                joint = env.cur_input_dict['joints'].reshape(22,3).cpu().detach()
+                for i in range(joint.shape[0]):
+                    for c in graph[i]:
+                        m1.plot([joint[i,p],joint[c,p]],[joint[i,2],joint[c,2]], c='black')
+                m1.scatter(joint[:,p],joint[:,2],c=colors[1])
+            if ii == 120:
+                print('qweqwe')
+                p = 0
+                joint = env.cur_input_dict['joints'].reshape(22,3).cpu().detach()
+                for i in range(joint.shape[0]):
+                    for c in graph[i]:
+                        m2.plot([joint[i,p],joint[c,p]],[joint[i,2],joint[c,2]], c='black')
+                m2.scatter(joint[:,p],joint[:,2],c=colors[2])
+            ii += 1
+        print('PREDICT END')
+        # fig = plt.figure()
+        # plt.axis('equal')
+        p = 0
+        joint = env.cur_input_dict['joints'].reshape(22,3).cpu().detach()
+        for i in range(joint.shape[0]):
+            for c in graph[i]:
+                end.plot([joint[i,p],joint[c,p]],[joint[i,2],joint[c,2]], c='black')
+        end.scatter(joint[:,p],joint[:,2],c=colors[3])
+        # env.ax2.scatter([s[0][0] for s in path],[s[0][1] for s in path])
+        # plt.savefig('SHOWME_PRED2.png')
+        plt.savefig('SHOWME_PRED3.png')
+        plt.show()
     elif test == 4:
         # run the trained model
         model = A2C("MlpPolicy",env=env, verbose=1) #, learning_rate=0.01)
@@ -193,26 +309,49 @@ if __name__ == '__main__':
         useSaved = True
         # env.default_roll_out_split()
         if useSaved:
-            model = A2C.load('agentNAA1500000', env=env)
+            model = A2C.load('agentNAA2000001', env=env)
             env.forward = model.policy.forward
             print('Agent Loaded')
         print('START TESTING')
-        state = env.reset()
+        env.max_simu = 300
+        state = env.reset(reborn=[(0,20)])#reborn=([(0,5),(5,5),(5,0),(0,0)]))
         done = False
-        path = []
-        while not done:
-            action, _ = model.predict(state)
-            state, reward, done, info = env.step(action[0])
-            path.append(state)
-        print('PREDICT END')
+        # path = []
+        fig, (sta, path, end) = plt.subplots(1, 3, gridspec_kw={'width_ratios': [1, 2, 1]}, figsize=(30,18))
+        sta.axis('equal')
+        path.axis('equal')
+        end.axis('equal')
         p = 0
         joint = env.cur_input_dict['joints'].reshape(22,3).cpu().detach()
         for i in range(joint.shape[0]):
             for c in graph[i]:
-                env.ax1.plot([joint[i,p],joint[c,p]],[joint[i,2],joint[c,2]], c='black')
-        env.ax1.scatter(joint[:,p],joint[:,2])
-        env.ax2.scatter([s[0][0] for s in path],[s[0][1] for s in path])
-        plt.savefig('SHOWME_PRED2.png')
+                sta.plot([joint[i,p],joint[c,p]],[joint[i,2],joint[c,2]], c='black')
+        sta.scatter(joint[:,p],joint[:,2],c='#0000FF')
+        lif = []
+        while not done:
+            action, _ = model.predict(state)
+            state, reward, done, info = env.step(action[0])
+            # path.append(state)
+            joint = env.cur_world_dict['joints'].reshape(22,3).cpu().detach().numpy()
+            lif.append(joint)
+        colors = green_to_red(len(lif))
+        for i, joint in enumerate(lif):
+            path.scatter(joint[:,0],joint[:,1],s=0.3,c=colors[i])
+        print('PREDICT END')
+        print(len(lif))
+        with open('run_his_tur.npy', 'wb') as f:
+            np.save(f, np.array(lif))
+        # fig = plt.figure()
+        # plt.axis('equal')
+        p = 0
+        joint = env.cur_input_dict['joints'].reshape(22,3).cpu().detach()
+        for i in range(joint.shape[0]):
+            for c in graph[i]:
+                end.plot([joint[i,p],joint[c,p]],[joint[i,2],joint[c,2]], c='black')
+        end.scatter(joint[:,p],joint[:,2],c='#FF0000')
+        # env.ax2.scatter([s[0][0] for s in path],[s[0][1] for s in path])
+        # plt.savefig('SHOWME_PRED2.png')
+        plt.savefig('SHOWME_PRED3.png')
         plt.show()
     elif test == 2:
         # Visualize the critic network, for 5D simple data
@@ -244,7 +383,7 @@ if __name__ == '__main__':
         # Training
         model = A2C("MlpPolicy",env=env, verbose=1) #, learning_rate=0.01)
         env.forward = model.policy.forward
-        useSaved = True
+        useSaved = False
         # env.default_roll_out_split()
         if useSaved:
             try:
@@ -254,12 +393,12 @@ if __name__ == '__main__':
             except:
                 pass
         print('START LEARNING')
-        total_step = 2000000
+        total_step = 1000000
         # eval_callback = EvalCallback(model, best_model_save_path="./myProject/logs/",
         #                      log_path="./myProject/logs/", eval_freq=500,
         #                      deterministic=True, render=False)
         model.learn(total_step)#, callback=eval_callback)
-        model.save('agentNAA'+str(total_step))
+        model.save('agentNAAR'+str(total_step))
         value_pair = np.array(env.rew_critic_pair)
         # plt.cla()
         # plt.scatter(value_pair[:,0], value_pair[:,1], alpha=np.array(range(len(value_pair)))/len(value_pair))
