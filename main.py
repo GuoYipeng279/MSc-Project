@@ -196,10 +196,11 @@ if __name__ == '__main__':
             json.dump(env.rew_critic_pair, f)
         print("FEATURE ENGINEERING FINISHED!")
     elif test == 3:
+        env.strength = 1
         arr = np.zeros(48)
-        arr[6] = 1.5
-        offset = tensor(arr, device='cuda:0')
-        env.default_roll_out_split(False, offset, "FIN6_15")
+        # arr[30] = -1.5
+        offset = tensor(arr, device='cuda:0').reshape(1,48)
+        env.default_roll_out_split(True, offset, "FIN30_15")
         # print("TEST MODE")
         # for i in range(48*9):
         #     print("ROLL:"+str(i))

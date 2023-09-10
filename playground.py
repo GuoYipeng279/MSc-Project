@@ -13,7 +13,7 @@ from main import init_pose, graph
 from torch import tensor
 
 args = parse_args(['@./configs/test_humor_sampling.cfg'])
-env = Skeleton(args, init_pose, controller=navigation_controller, representer='RELA5')
+env = Skeleton(args, init_pose, representer='RELA5')
 env.reset()
 
 p = 0

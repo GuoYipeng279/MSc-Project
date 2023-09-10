@@ -31,8 +31,13 @@ Then run:
 sbatch humor.sh 4
 ```
 Every running will be slightly different beacuse of randomness of the model. 
+A simulation result start with 'run_his_...' will appear under the HuMoR folder.
+Put this file name and path into the .blend file visualize.blend line 12 to visualize(Please delete previous skeletons in the scene, if any). 
 
-training:
+For training:
 ```
 sbatch humor.sh 0
 ```
+A trained model start with 'agent...' will appear under the HuMoR folder.
+
+On a GPU avaliable machine, the file main.py can be run with argument 0 for training, 4 for testing directly.

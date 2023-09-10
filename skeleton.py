@@ -614,10 +614,10 @@ class Skeleton(Env):
                 # action[self.controller[controller][0]] = self.controller[controller][1] # setup which dimensions to control, only the maximum take effect
                 # action = tensor(action, device='cuda:0')
                 selection = self.selection(controller, use_critic=use_critic)
-                self.roll_out_step(True, self.bounded_sample(5.6), self.selection(1) if self.walking_length < 150 else self.selection(0))
+                # self.roll_out_step(True, self.bounded_sample(5.6), self.selection(1) if self.walking_length < 150 else self.selection(0))
                 # action[6] = 1.5
                 # self.roll_out_step(True, tensor(action, device='cuda:0').reshape(1,48))
-                # self.roll_out_step(True, self.bounded_sample(5.6), selection)
+                self.roll_out_step(True, self.bounded_sample(5.6), selection)
             else:
                 # do nothing, just roaming
                 self.roll_out_step(False)
@@ -954,8 +954,8 @@ class Skeleton(Env):
         del init_dict['contacts']
         self.roll_out_init(pose, init_dict)
         for t in range(self.max_simu if simu is None else simu):
-            selection = self.selection(4) if t < 100 else self.selection(2)
-            self.roll_out_step(use_mean=use_mean, action=action, select_batch=selection)
+            # selection = self.selection(4) if t < 100 else self.selection(2)
+            self.roll_out_step(use_mean=use_mean, action=action) #, select_batch=selection)
             # self.VAE339toMEAN6(self.cur_world_dict)
             self.state = self.state_encoder(self.cur_world_dict)
             view = (self.state.cpu().detach().numpy().tolist()[0], t)
@@ -989,11 +989,30 @@ class Skeleton(Env):
         # build pytorch distrib
         self.gmm_distrib = build_pytorch_gmm(gmm_weights, gmm_means, gmm_covs)
 
+def green_to_red(num_colors):
+
+    # Define the RGB values for green and red
+    green = np.array([0, 0, 255])
+    red = np.array([255, 0, 0])
+
+    # Generate a list of colors by linearly interpolating between green and red
+    colors = []
+    for i in range(num_colors):
+        # Calculate the intermediate color by linear interpolation
+        intermediate_color = (green * (num_colors - i - 1) + red * i) / (num_colors - 1)
+        
+        # Convert the RGB values to hexadecimal format
+        hex_color = '#{:02X}{:02X}{:02X}'.format(int(intermediate_color[0]), int(intermediate_color[1]), int(intermediate_color[2]))
+        
+        colors.append(hex_color)
+
+    return colors
 
 def ploting(ans,ax1,ax2):
     '''
     ans: skeleton animation information, a -1x22x3 array
     '''
+    ans = ans[:300]
     step = ans.shape[0]
     ax1.cla()
     ax2.cla()
@@ -1001,18 +1020,19 @@ def ploting(ans,ax1,ax2):
     # ax1.set_ylim([-1, 2])
     ax2.set_xlim([-2, 5])
     ax2.set_ylim([-2, 2])
-    ax1.set_xlim([-2, 5])
-    ax1.set_ylim([-2, 5])
+    ax1.set_xlim([-4, 4])
+    ax1.set_ylim([-3, 5])
     x,y = ans[0,:,0],ans[0,:,1]
     ax1.scatter(x,y,s=3) # plot the initial state
     x,y = ans[0,:,1],ans[0,:,2]
     ax2.scatter(x,y,s=3) # plot the initial state
+    color = green_to_red(step)
     for f in range(1,step-1):
         # rule of roll out: the user offset is taken a multiplier of the std of z.
         x,y = ans[f,:,0],ans[f,:,1]
-        ax1.scatter(x,y,c='green',alpha=np.ones(22)*f/step,s=1) # plot the intermid states
+        ax1.scatter(x,y,c=color[f],s=1) # plot the intermid states
         x,y = ans[f,:,1],ans[f,:,2]
-        ax2.scatter(x,y,c='green',alpha=np.ones(22)*f/step,s=1) # plot the intermid states
+        ax2.scatter(x,y,c=color[f],s=1) # plot the intermid states
     x,y = ans[-1,:,0],ans[-1,:,1]
     ax1.scatter(x,y,c='red',s=7) # plot the final state
     x,y = ans[-1,:,1],ans[-1,:,2]
