@@ -2,7 +2,7 @@
 
 An reinforcement learning extension built on HuMoR model. 
 
-![Navigation](55.png)
+
 ![Model](f7.png)
 
 This repo contains the code used in the project. The repo should be placed under the HuMoR repo folder. 
