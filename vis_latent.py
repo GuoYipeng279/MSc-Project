@@ -14,6 +14,7 @@ from torch import tensor
 
 args = parse_args(['@./configs/test_humor_sampling.cfg'])
 env = Skeleton(args, init_pose)
+env.strength = 1
 user_data = [0.]*48
 
 def update_plot(_=None):  # Accept a parameter (ignored)

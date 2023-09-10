@@ -59,8 +59,8 @@ tmpd9t9knqt
 
 ssh gpucluster2.doc.ic.ac.uk
 cd /vol/bitbucket/yg2719/IndividualProject/humor
-bash monitor.sh 5
 sbatch humor.sh
+bash monitor.sh 5
 nvidia-smi -l 30
 squeue -u yg2719
 code slurm20-94620.out

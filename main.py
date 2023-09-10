@@ -175,10 +175,11 @@ def green_to_red(num_colors):
     return colors
 
 if __name__ == '__main__':
-    print(sys.argv[1:])
+    arg = sys.argv[1:]
     args = parse_args(['@./configs/test_humor_sampling.cfg'])
     env = Skeleton(args, init_pose, navigation_controller, "RELA5")
     test = 4 # choose function
+    if arg: test = arg[0]
     if test == 1:
         # Check features
         print("TEST MODE")
@@ -195,18 +196,22 @@ if __name__ == '__main__':
             json.dump(env.rew_critic_pair, f)
         print("FEATURE ENGINEERING FINISHED!")
     elif test == 3:
-        print("TEST MODE")
-        for i in range(48*9):
-            print("ROLL:"+str(i))
-            arr = np.zeros(48)
-            # arr[7] = -1.
-            posneg = (i%9)/2. - 2.
-            arr[i//9] = posneg
-            offset = tensor(arr, device='cuda:0')
-            env.default_roll_out_split(False, offset, "fea_sta"+str(i//9)+"_"+str(i%9))
-        with open('features_sta.json', 'w') as f:
-            json.dump(env.rew_critic_pair, f)
-        print("ROLL FINISHED!")
+        arr = np.zeros(48)
+        arr[6] = 1.5
+        offset = tensor(arr, device='cuda:0')
+        env.default_roll_out_split(False, offset, "FIN6_15")
+        # print("TEST MODE")
+        # for i in range(48*9):
+        #     print("ROLL:"+str(i))
+        #     arr = np.zeros(48)
+        #     # arr[7] = -1.
+        #     posneg = (i%9)/2. - 2.
+        #     arr[i//9] = posneg
+        #     offset = tensor(arr, device='cuda:0')
+        #     env.default_roll_out_split(False, offset, "fea_sta"+str(i//9)+"_"+str(i%9))
+        # with open('features_sta.json', 'w') as f:
+        #     json.dump(env.rew_critic_pair, f)
+        # print("ROLL FINISHED!")
     elif test == 6:
         # run the trained model
         model = A2C.load('agentNAA2000001', env=env)

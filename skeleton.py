@@ -999,8 +999,8 @@ def ploting(ans,ax1,ax2):
     ax2.cla()
     # ax1.set_xlim([-1, 1])
     # ax1.set_ylim([-1, 2])
-    ax2.set_xlim([-1, 5])
-    ax2.set_ylim([-1, 2])
+    ax2.set_xlim([-2, 5])
+    ax2.set_ylim([-2, 2])
     ax1.set_xlim([-2, 5])
     ax1.set_ylim([-2, 5])
     x,y = ans[0,:,0],ans[0,:,1]
