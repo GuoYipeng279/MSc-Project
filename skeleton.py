@@ -185,7 +185,7 @@ class Skeleton(Env):
         self.init_matrix2d = torch.tensor([[0.,-1.],[1.,0.]])
         self.control = None
         self.control_timer = 0
-        self.run_some = 200*0
+        self.run_some = 200
         self.init_info = None
         distance = np.random.uniform(0,10)
         angle = np.random.uniform(0,2*np.pi)
@@ -240,13 +240,16 @@ class Skeleton(Env):
 
     def coodinate_tranform(self, state, ans, global_world2local_rot, B):
         '''
+        a add on for RELA5
         control the state with in 7m from origin, for Crtitc input.
         '''
-        norm = torch.mean(torch.norm(ans[:,:2], dim=-1))
+        if not self.target_stack:
+            return ans
+        norm = torch.mean(torch.norm(ans[:,:2]-tensor(self.target_stack[-1]).reshape(1,2).expand(B,-1), dim=-1))
         mean = torch.mean(ans[:,:2], dim=0)
         if norm > 6.:
-            self.target_stack.append((mean+tensor(self.target_stack[-1]))/2)
-        elif norm < 1.1 and self.target_stack:
+            self.target_stack.append((tensor(self.target_stack[-1])+mean)/2) # set up mid point as anchor point.
+        elif norm < 1.1 and len(self.target_stack) > 1:
             self.target_stack.pop()
         else:
             return ans
@@ -254,7 +257,7 @@ class Skeleton(Env):
 
     def RELA5(self, state, global_world2local_rot=None, B=1):
         '''
-        Return a 5D vector, [[position:2],[velocity:2],[angle:1]]
+        Return a 6D vector, [[position:2],[velocity:2],[angle:2]]
         This is the simple possible state representation for the agent.
         '''
         if global_world2local_rot is None: global_world2local_rot = self.global_world2local_rot
@@ -266,12 +269,12 @@ class Skeleton(Env):
         # data = [trans, torch.mean(self.vel, 0).reshape(1,-1), orient]
         cur_state = torch.cat(data, dim=-1)
         ans = cur_state[:,:]
-        ans[:,:2] = ans[:,:2]-tensor(self.objective[0]).view(1,-1).expand(B,-1)
-        # if self.target_stack:
-        #     ans[:,:2] = ans[:,:2]-tensor(self.target_stack[-1]).view(1,-1).expand(B,-1)
-        # else:
-        #     ans[:,:2] = ans[:,:2]-tensor(self.objective[0]).view(1,-1).expand(B,-1)
-        # ans = self.coodinate_tranform(state, ans, global_world2local_rot, B)
+        ans = self.coodinate_tranform(state, ans, global_world2local_rot, B)
+        # ans[:,:2] = ans[:,:2]-tensor(self.objective[0]).view(1,-1).expand(B,-1)
+        if self.target_stack:
+            ans[:,:2] = ans[:,:2]-tensor(self.target_stack[-1]).view(1,-1).expand(B,-1)
+        else:
+            ans[:,:2] = ans[:,:2]-tensor(self.objective[0]).view(1,-1).expand(B,-1)
         return ans
 
     def navigator_reward(self):

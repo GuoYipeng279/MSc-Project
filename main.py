@@ -315,12 +315,14 @@ if __name__ == '__main__':
         useSaved = True
         # env.default_roll_out_split()
         if useSaved:
-            model = A2C.load('agentNAA2000001', env=env)
+            # model = A2C.load('agentNAA2000001', env=env)
+            model = A2C.load('agentNAAR300000', env=env)
             env.forward = model.policy.forward
             print('Agent Loaded')
         print('START TESTING')
-        env.max_simu = 300
-        state = env.reset(reborn=[(0,20)])#reborn=([(0,5),(5,5),(5,0),(0,0)]))
+        env.max_simu = 9000
+        env.run_some = 0
+        state = env.reset(reborn=([(0,10),(10,10)]))#,(5,0),(0,0)]))
         done = False
         # path = []
         fig, (sta, path, end) = plt.subplots(1, 3, gridspec_kw={'width_ratios': [1, 2, 1]}, figsize=(30,18))
@@ -345,7 +347,7 @@ if __name__ == '__main__':
             path.scatter(joint[:,0],joint[:,1],s=0.3,c=colors[i])
         print('PREDICT END')
         print(len(lif))
-        with open('run_his_tur.npy', 'wb') as f:
+        with open('run_his31_tur.npy', 'wb') as f:
             np.save(f, np.array(lif))
         # fig = plt.figure()
         # plt.axis('equal')
@@ -399,7 +401,7 @@ if __name__ == '__main__':
             except:
                 pass
         print('START LEARNING')
-        total_step = 1000000
+        total_step = 300000
         # eval_callback = EvalCallback(model, best_model_save_path="./myProject/logs/",
         #                      log_path="./myProject/logs/", eval_freq=500,
         #                      deterministic=True, render=False)
