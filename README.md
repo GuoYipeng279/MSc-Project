@@ -41,5 +41,6 @@ For training:
 sbatch humor.sh 0
 ```
 A trained model start with 'agent...' will appear under the HuMoR folder.
+There are two saved model agentNAA2000001.zip for local navigation, and agentNAAR300000.zip for global navigation.
 
 On a GPU avaliable machine, the file main.py can be run with argument 0 for training, 4 for testing directly.
