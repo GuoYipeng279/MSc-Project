@@ -33,6 +33,7 @@ sbatch humor.sh 4
 Every running will be slightly different beacuse of randomness of the model. 
 A simulation result start with 'run_his_...' will appear under the HuMoR folder.
 Put this file name and path into the .blend file visualize.blend line 12 to visualize(Please delete previous skeletons in the scene, if any). 
+There are .npy result files under the results folder for quick visualization.
 
 For training:
 ```
