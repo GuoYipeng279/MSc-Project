@@ -322,7 +322,8 @@ if __name__ == '__main__':
         print('START TESTING')
         env.max_simu = 9000
         env.run_some = 0
-        state = env.reset(reborn=([(0,10),(10,10)]))#,(5,0),(0,0)]))
+        state = env.reset(reborn=([(1.5,6),(3,8.5),(10,10)]))#,(5,0),(0,0)]))
+        # state = env.reset(reborn=([(0,10),(10,10)]))#,(5,0),(0,0)]))
         done = False
         # path = []
         fig, (sta, path, end) = plt.subplots(1, 3, gridspec_kw={'width_ratios': [1, 2, 1]}, figsize=(30,18))
@@ -347,7 +348,7 @@ if __name__ == '__main__':
             path.scatter(joint[:,0],joint[:,1],s=0.3,c=colors[i])
         print('PREDICT END')
         print(len(lif))
-        with open('run_his31_tur.npy', 'wb') as f:
+        with open('myProject/results/run_his31_nav1.npy', 'wb') as f:
             np.save(f, np.array(lif))
         # fig = plt.figure()
         # plt.axis('equal')

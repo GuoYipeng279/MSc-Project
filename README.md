@@ -32,7 +32,8 @@ sbatch humor.sh 4
 ```
 Every running will be slightly different beacuse of randomness of the model. 
 A simulation result start with 'run_his_...' will appear under the HuMoR folder.
-Put this file name and path into the .blend file visualize.blend line 12 to visualize(Please delete previous skeletons in the scene, if any). 
+Put this file name into the .blend file visualize.blend line 12 to visualize(Please delete previous skeletons in the scene, if any). 
+In line 13 there is a parameter control the sample interval, usually around 30, can float +-1~2.
 There are .npy result files under the results folder for quick visualization.
 
 For training:
